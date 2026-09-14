@@ -1,0 +1,248 @@
+AIRPORT LABEL QUEST — GITHUB & DEPLOYMENT INSTRUCTIONS
+========================================================
+
+This project is ready to place in a GitHub repository and deploy as a Python web
+service. It includes a Dockerfile, docker-compose.yml, Procfile, Render Blueprint,
+GitHub Actions verification workflow, health endpoint, and persistent-data support.
+
+IMPORTANT: GITHUB PAGES IS NOT SUITABLE FOR THIS APP
+----------------------------------------------------
+GitHub Pages can serve static HTML/CSS/JavaScript only. Airport Label Quest has a
+Python backend that stores player profiles, session trends, validation drafts, shared
+route edits, and custom questions. Publish the source on GitHub, then deploy the
+running service from that repository using Render, Railway, Fly.io, a VPS, or another
+container/Python host.
+
+The recommended path below is GitHub + Render because render.yaml is included.
+
+
+1. PREPARE THE PROJECT
+----------------------
+Required files already included:
+
+  app.py                         Python HTTP server
+  game_data.py                   Fallback main-chart bank
+  locations_data.py              Airport locations-learning bank
+  yyc_ground_data.py             YYC Ground Sort bank and Jets/Props answers
+  questions.txt                  Supplied curated question/answer list
+  question_bank_curated.json     Curated main bank imported from questions.txt
+  static/                        Browser UI
+  assets/                        Main, locations, and YYC Ground Sort chart images
+  Dockerfile                     Production container image
+  docker-compose.yml             Local production-like container run
+  Procfile                       Buildpack-compatible start command
+  render.yaml                    Render deployment Blueprint
+  .github/workflows/ci.yml       GitHub Actions verification workflow
+  .gitignore                     Keeps mutable game memory out of Git
+  deploy-inst.txt                This guide
+
+The mutable runtime database is a JSON file. It stores user profiles, game/validation
+progress, shared bank edits, and flashcard decks (including optional card images). By
+default it is written to:
+
+  data/airport_labeler_memory.json
+
+It is intentionally ignored by Git. Do NOT commit real player data, validation drafts,
+or saved question-bank edits to a public repository.
+
+
+2. TEST LOCALLY BEFORE PUSHING
+------------------------------
+From this project directory:
+
+  python3 app.py
+
+Open:
+
+  http://localhost:8000
+
+Health check:
+
+  http://localhost:8000/healthz
+
+Optional Docker test:
+
+  docker compose up --build
+
+Then open http://localhost:8000. Docker Compose creates a named persistent volume so
+player data survives container restarts. Stop it with:
+
+  docker compose down
+
+
+3. CREATE AND PUSH A GITHUB REPOSITORY
+--------------------------------------
+A. On github.com, create a new EMPTY repository. Do not add a README, .gitignore, or
+   license there because this project already contains those files.
+
+B. In a terminal in this project directory, run:
+
+  git init
+  git branch -M main
+  git add .
+  git status
+  git commit -m "Initial deployable Airport Label Quest"
+  git remote add origin https://github.com/YOUR_GITHUB_USERNAME/YOUR_REPOSITORY.git
+  git push -u origin main
+
+Before committing, inspect `git status`. It should NOT show:
+
+  data/airport_labeler_memory.json
+
+C. Open the GitHub repository. The included GitHub Actions workflow runs syntax and
+   deployment-file checks on pushes and pull requests. See the Actions tab for the
+   result.
+
+If you use SSH remotes instead, replace the `git remote add origin` URL with:
+
+  git@github.com:YOUR_GITHUB_USERNAME/YOUR_REPOSITORY.git
+
+
+4. RECOMMENDED PUBLIC DEPLOYMENT: RENDER FROM GITHUB
+-----------------------------------------------------
+A. Create or sign in to a Render account: https://render.com
+
+B. Connect Render to your GitHub account and authorize access to the repository.
+
+C. In Render, choose:
+
+  New +  ->  Blueprint
+
+D. Select the GitHub repository. Render finds render.yaml automatically.
+
+E. Confirm the service creation. The supplied Blueprint:
+
+  - builds the Dockerfile;
+  - starts the app on the platform-provided PORT;
+  - uses /healthz as its health check;
+  - mounts a persistent disk at /var/lib/airport-labeler;
+  - sets AIRPORT_LABELER_DATA_DIR to that disk path.
+
+F. Choose a Render plan that SUPPORTS PERSISTENT DISKS. A disk is required because
+   this app saves users, trends, validation edits, and custom questions on disk.
+   Without a persistent disk, data may be lost on redeploy or restart.
+
+G. After the build completes, open the Render URL. Create a username on the welcome
+   screen and verify the application works.
+
+Manual Render setup, if you do not use the Blueprint:
+
+  Service type:       Web Service
+  Runtime:            Docker
+  Repository:         Your GitHub repository
+  Dockerfile path:    ./Dockerfile
+  Health check path:  /healthz
+  Persistent disk:    mount at /var/lib/airport-labeler
+  Environment value:  AIRPORT_LABELER_DATA_DIR=/var/lib/airport-labeler
+
+Use ONE running service instance. The JSON save file is designed for one server process
+with one mounted volume, not horizontally scaled replicas.
+
+
+5. OTHER HOSTS
+--------------
+Any host that supports a Docker image or Python web process can run the project.
+
+Required runtime settings:
+
+  Bind host:                  0.0.0.0
+  Port:                       Set by the platform through PORT
+  Persistent data variable:   AIRPORT_LABELER_DATA_DIR=/a/persistent/folder
+
+The Dockerfile already uses:
+
+  python app.py --host 0.0.0.0 --port ${PORT:-8000}
+
+For Railway, Fly.io, DigitalOcean App Platform, a VPS, or another container host:
+
+  1. Connect the GitHub repository.
+  2. Deploy using the Dockerfile.
+  3. Attach a persistent volume/disk.
+  4. Set AIRPORT_LABELER_DATA_DIR to the mount path.
+  5. Configure /healthz as the health endpoint, if the host supports health checks.
+  6. Keep the service at a single replica unless the persistence layer is replaced
+     with a real shared database.
+
+The Procfile is included for hosts that prefer a Python buildpack instead of Docker:
+
+  web: python app.py --host 0.0.0.0 --port $PORT
+
+
+6. GITHUB CODESPACES (OPTIONAL DEVELOPMENT PREVIEW)
+----------------------------------------------------
+GitHub Codespaces is useful for editing or demonstrating the app, but it is not a
+permanent public production host.
+
+  1. Open the GitHub repository.
+  2. Choose Code -> Codespaces -> Create codespace on main.
+  3. Run: python app.py
+  4. Open the forwarded port 8000 from the Ports panel.
+
+Codespaces storage/lifetime rules apply. Do not rely on it as the only place for
+important player data.
+
+
+7. UPDATING A DEPLOYED APP
+--------------------------
+After making changes locally:
+
+  git add .
+  git commit -m "Describe your change"
+  git push
+
+Render and most GitHub-connected hosts automatically rebuild from the pushed branch.
+Watch the provider's deployment logs and then visit:
+
+  https://YOUR-DEPLOYMENT/healthz
+
+A successful response is:
+
+  {"status": "ok"}
+
+
+8. BACKUP AND DATA SAFETY
+-------------------------
+The live state is one JSON file named airport_labeler_memory.json in the configured
+AIRPORT_LABELER_DATA_DIR. The **Update data** popup in the app can also export a full
+portable JSON backup containing all user profiles, question banks, validation data,
+flashcards, card images, and card tags. The importer is also backwards compatible
+with earlier route-bank, locations-bank, combined question-bank, and raw legacy
+single-user JSON exports. Back up the persistent disk or export this file before:
+
+  - changing hosting providers;
+  - deleting a service or volume;
+  - manually editing application data;
+  - experimenting with a new deployment.
+
+The application makes atomic writes, but it is not a multi-instance database. Use one
+web-service replica and a persistent disk for the included storage model.
+
+
+9. USERNAME / SECURITY NOTE
+---------------------------
+The welcome screen uses usernames only; it is profile separation, NOT authentication.
+Anyone who knows a username can select it on a public deployment. For a public
+internet-facing installation with private accounts, add real authentication (for
+example OAuth, passwords, or a hosted identity provider) and replace JSON storage with
+a managed database before handling sensitive data.
+
+
+10. TROUBLESHOOTING
+-------------------
+Problem: Deployment starts but resets users after every deploy.
+Fix: Attach a persistent disk/volume and set AIRPORT_LABELER_DATA_DIR to its mount path.
+
+Problem: The health check fails.
+Fix: Ensure the host exposes the service PORT and use /healthz, not /api/state (the
+     latter requires a username header).
+
+Problem: Git keeps showing player data.
+Fix: Confirm .gitignore contains data/*.json. If already tracked, run:
+
+  git rm --cached data/airport_labeler_memory.json
+  git commit -m "Stop tracking runtime data"
+  git push
+
+Problem: Multiple replicas show inconsistent player progress.
+Fix: Scale the service back to one replica, or migrate persistence from JSON to a
+     shared database before enabling horizontal scaling.

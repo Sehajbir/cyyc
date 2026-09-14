@@ -1,0 +1,2 @@
+# Airport Label Quest uses only Python's standard library.
+# This file is intentionally dependency-free for deployment platforms that expect it.

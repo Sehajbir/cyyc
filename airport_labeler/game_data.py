@@ -1,0 +1,212 @@
+"""Airport-chart question data.
+
+The default records match the curated answers supplied in questions.txt and mirrored
+in question_bank_curated.json. Coordinates are expressed in the 803 x 922 coordinate
+system of assets/airport_blank.png.
+They were transcribed from the supplied labelled airport chart and normalized to the
+blank-chart canvas.  A target is a collection of route centreline segments; a click
+within its tolerance is accepted.
+"""
+
+from __future__ import annotations
+
+CANVAS_WIDTH = 803
+CANVAS_HEIGHT = 922
+
+# Each path is a list of [x, y] points.  Short, local taxiways intentionally use a
+# small labelled section rather than their full pavement footprint so adjacent
+# taxiways remain distinguishable.
+QUESTION_BANK = [
+    {
+        "id": "rwy_35l_17r",
+        "label": "Runway 35L / 17R",
+        "category": "Runway",
+        "clue": "The long north–south runway just west of the airport centre.",
+        "paths": [[[323, 242], [323, 894]]],
+        "tolerance": 27,
+    },
+    {
+        "id": "rwy_35r_17l",
+        "label": "Runway 35R / 17L",
+        "category": "Runway",
+        "clue": "The tall north–south runway along the eastern edge of the chart.",
+        "paths": [[[648, 15], [648, 651]]],
+        "tolerance": 25,
+    },
+    {
+        "id": "rwy_08_26",
+        "label": "Runway 08 / 26",
+        "category": "Runway",
+        "clue": "The prominent diagonal runway connecting the northwest and southeast sides.",
+        "paths": [[[184, 349], [503, 579]]],
+        "tolerance": 27,
+    },
+    {
+        "id": "taxiway_a",
+        "label": "Taxiway A",
+        "category": "Taxiway",
+        "clue": "The long western parallel taxiway beside Runway 35L / 17R.",
+        "paths": [[[287, 404], [287, 758], [273, 807], [305, 864]]],
+        "tolerance": 18,
+    },
+    {
+        "id": "taxiway_a1",
+        "label": "Taxiway A1",
+        "category": "Taxiway",
+        "clue": "The A-series connector immediately south of the diagonal runway crossing.",
+        "paths": [[[291, 510], [323, 530]]],
+        "tolerance": 18,
+    },
+    {
+        "id": "taxiway_a3",
+        "label": "Taxiway A3",
+        "category": "Taxiway",
+        "clue": "The lower A-series connector curving toward the central runway.",
+        "paths": [[[294, 667], [312, 635], [323, 616]]],
+        "tolerance": 17,
+    },
+    {
+        "id": "taxiway_b",
+        "label": "Taxiway B",
+        "category": "Taxiway",
+        "clue": "The outer north–south taxiway west of the eastern runway system.",
+        "paths": [[[607, 189], [607, 625]]],
+        "tolerance": 16,
+    },
+    {
+        "id": "taxiway_d",
+        "label": "Taxiway D",
+        "category": "Taxiway",
+        "clue": "The long taxiway immediately next to the west side of Runway 35R / 17L.",
+        "paths": [[[627, 76], [627, 643]]],
+        "tolerance": 15,
+    },
+    {
+        "id": "taxiway_e",
+        "label": "Taxiway E",
+        "category": "Taxiway",
+        "clue": "The terminal-side east–west taxiway leading toward the eastern runway complex.",
+        "paths": [[[524, 357], [603, 357]]],
+        "tolerance": 20,
+    },
+    {
+        "id": "taxiway_f",
+        "label": "Taxiway F",
+        "category": "Taxiway",
+        "clue": "The short southeast connector below the main terminal taxiway network.",
+        "paths": [[[478, 479], [511, 500], [542, 527]]],
+        "tolerance": 18,
+    },
+    {
+        "id": "taxiway_g",
+        "label": "Taxiway G",
+        "category": "Taxiway",
+        "clue": "The central terminal-area taxiway near the circular intersection west of the terminal.",
+        "paths": [[[421, 420], [452, 441], [474, 442]]],
+        "tolerance": 21,
+    },
+    {
+        "id": "taxiway_h",
+        "label": "Taxiway H",
+        "category": "Taxiway",
+        "clue": "The upper terminal-area taxiway directly below the north apron.",
+        "paths": [[[402, 307], [448, 318]]],
+        "tolerance": 20,
+    },
+    {
+        "id": "taxiway_j",
+        "label": "Taxiway J",
+        "category": "Taxiway",
+        "clue": "The central east–west taxiway south of the upper terminal apron.",
+        "paths": [[[438, 368], [493, 368]]],
+        "tolerance": 20,
+    },
+    {
+        "id": "taxiway_l",
+        "label": "Taxiway L",
+        "category": "Taxiway",
+        "clue": "The broad lower east–west taxiway north of the south apron.",
+        "paths": [[[325, 754], [514, 754]]],
+        "tolerance": 20,
+    },
+    {
+        "id": "taxiway_r",
+        "label": "Taxiway R",
+        "category": "Taxiway",
+        "clue": "The east-side connector that runs west from the eastern runway system.",
+        "paths": [[[545, 535], [610, 535]]],
+        "tolerance": 19,
+    },
+    {
+        "id": "taxiway_u",
+        "label": "Taxiway U",
+        "category": "Taxiway",
+        "clue": "The central lower east–west taxiway above the de-icing area.",
+        "paths": [[[397, 602], [501, 602]]],
+        "tolerance": 20,
+    },
+    {
+        "id": "taxiway_v",
+        "label": "Taxiway V",
+        "category": "Taxiway",
+        "clue": "The south-apron taxiway on the west side of the lower terminal complex.",
+        "paths": [[[278, 772], [306, 794], [337, 834]]],
+        "tolerance": 20,
+    },
+    {
+        "id": "taxiway_wb",
+        "label": "Taxiway WB",
+        "category": "Taxiway",
+        "clue": "The western bypass taxiway between the northwest apron and the diagonal runway.",
+        "paths": [[[223, 407], [260, 425], [296, 446]]],
+        "tolerance": 20,
+    },
+    {
+        "id": "taxiway_x",
+        "label": "Taxiway X",
+        "category": "Taxiway",
+        "clue": "The small lower-central taxiway beside the de-icing area.",
+        "paths": [[[397, 697], [397, 728]]],
+        "tolerance": 18,
+    },
+    {
+        "id": "taxiway_y",
+        "label": "Taxiway Y",
+        "category": "Taxiway",
+        "clue": "The lower-central north–south taxiway just east of Taxiway X.",
+        "paths": [[[475, 674], [475, 716]]],
+        "tolerance": 19,
+    },
+    {
+        "id": "taxiway_z",
+        "label": "Taxiway Z",
+        "category": "Taxiway",
+        "clue": "The short upper connector beside the eastern runway approach.",
+        "paths": [[[629, 158], [629, 212]]],
+        "tolerance": 17,
+    },
+]
+
+QUESTIONS_BY_ID = {question["id"]: question for question in QUESTION_BANK}
+
+
+def public_question(question_id: str) -> dict:
+    """Return only the prompt data a player needs before answering."""
+    question = QUESTIONS_BY_ID[question_id]
+    return {
+        "id": question["id"],
+        "label": question["label"],
+        "category": question["category"],
+        "clue": question["clue"],
+    }
+
+
+def public_hint(question_id: str) -> dict:
+    """Return hint geometry only when the player explicitly asks for a hint."""
+    question = QUESTIONS_BY_ID[question_id]
+    return {
+        "id": question["id"],
+        "label": question["label"],
+        "paths": question["paths"],
+        "tolerance": question["tolerance"],
+    }

@@ -1,0 +1,42 @@
+name: Verify Airport Label Quest
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile Python source
+        run: python -m py_compile app.py game_data.py locations_data.py yyc_ground_data.py
+
+      - name: Verify deploy assets
+        run: |
+          test -f assets/airport_blank.png
+          test -f assets/airport_labelled.png
+          test -f assets/locations_blank.png
+          test -f assets/locations_labelled.png
+          test -f assets/yyc_ground_blank.png
+          test -f assets/yyc_ground_filled.png
+          test -f locations_data.py
+          test -f yyc_ground_data.py
+          test -f questions.txt
+          test -f question_bank_curated.json
+          test -f static/index.html
+          test -f static/styles.css
+          test -f static/game.js
+          test -f Dockerfile
+          test -f deploy-inst.txt

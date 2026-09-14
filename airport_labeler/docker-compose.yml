@@ -1,0 +1,14 @@
+services:
+  airport-label-quest:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: "8000"
+      AIRPORT_LABELER_DATA_DIR: /var/lib/airport-labeler
+    volumes:
+      - airport_labeler_data:/var/lib/airport-labeler
+    restart: unless-stopped
+
+volumes:
+  airport_labeler_data:

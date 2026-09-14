@@ -1,0 +1,12 @@
+.git
+.github
+__pycache__
+*.py[cod]
+.venv
+venv
+.env
+.DS_Store
+data/*.json
+*.log
+README.md
+deploy-inst.txt

@@ -1,0 +1,16 @@
+# Render Blueprint: deploy from a GitHub repository using a Docker web service.
+# Choose a Render plan that supports persistent disks; the JSON game memory must
+# be stored on the mounted disk to survive redeploys and restarts.
+services:
+  - type: web
+    name: airport-label-quest
+    runtime: docker
+    plan: starter
+    healthCheckPath: /healthz
+    disk:
+      name: airport-labeler-data
+      mountPath: /var/lib/airport-labeler
+      sizeGB: 1
+    envVars:
+      - key: AIRPORT_LABELER_DATA_DIR
+        value: /var/lib/airport-labeler

@@ -1,0 +1,900 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="A saved-progress airport runway and taxiway labelling game."
+    />
+    <title>Airport Label Quest</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <button class="brand" id="homeBrand" type="button" aria-label="Return to home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 48 48" role="img">
+              <path d="M24 4v40M4 24h40" />
+              <path d="M12 12l24 24M36 12L12 36" opacity=".35" />
+              <circle cx="24" cy="24" r="8" />
+            </svg>
+          </span>
+          <span>
+            <strong>Airport Label Quest</strong>
+            <small>RUNWAYS · TAXIWAYS · MEMORY</small>
+          </span>
+        </button>
+        <div class="topbar-actions">
+          <span class="saved-status user-only hidden" id="savedStatus" aria-live="polite">
+            <span class="status-dot"></span> Saved locally
+          </span>
+          <span class="player-chip user-only hidden" id="playerChip" aria-label="Current player">
+            <span class="player-chip-icon" aria-hidden="true">●</span>
+            <strong id="playerName">Player</strong>
+          </span>
+          <button class="button button-quiet user-only hidden" id="switchUserBtn" type="button">
+            Switch user
+          </button>
+          <button class="button button-quiet user-only hidden" id="dataUpdateBtn" type="button">
+            Update data
+          </button>
+          <button class="button button-quiet top-trends user-only hidden" id="topTrendsBtn" type="button">
+            Session trends
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <section class="screen" id="welcomeScreen" aria-labelledby="welcomeTitle">
+          <div class="welcome-layout">
+            <div class="welcome-copy">
+              <p class="eyebrow">AIRPORT LABEL QUEST</p>
+              <h1 id="welcomeTitle">Who is<br /><em>on the flight deck?</em></h1>
+              <p>Enter a username to keep practice progress, session trends, and saved chart work separate for every player.</p>
+              <div class="welcome-form">
+                <label for="welcomeUsername">USERNAME</label>
+                <div class="welcome-input-row">
+                  <input id="welcomeUsername" type="text" maxlength="32" autocomplete="nickname" placeholder="Enter your name" />
+                  <button class="button button-primary button-large" id="welcomeContinueBtn" type="button">Continue <span aria-hidden="true">→</span></button>
+                </div>
+                <p class="welcome-error hidden" id="welcomeError" role="alert"></p>
+              </div>
+            </div>
+
+            <aside class="welcome-card" aria-labelledby="knownUsersTitle">
+              <div class="mission-card-top">
+                <span class="mission-icon" aria-hidden="true">◉</span>
+                <span class="mission-kicker">PLAYER PROFILES</span>
+              </div>
+              <h2 id="knownUsersTitle">Continue as a returning player</h2>
+              <p>Choose a saved username to open that player’s own trends and progress.</p>
+              <div class="known-users" id="knownUsers">
+                <div class="known-users-empty">No saved players yet. Create the first profile above.</div>
+              </div>
+              <div class="welcome-card-footer">The shared question bank and validation tools remain available to every user.</div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="screen hidden" id="menuScreen" aria-labelledby="menuTitle">
+          <div class="hero-grid">
+            <div class="hero-copy">
+              <p class="eyebrow">AIRPORT DIAGRAM DRILL</p>
+              <h1 id="menuTitle">Read the chart.<br /><em>Own the airfield.</em></h1>
+              <p class="hero-lede">
+                Work from a clean airport diagram, locate every runway and taxiway,
+                and build a history of your chart-reading progress.
+              </p>
+              <div class="hero-actions">
+                <button class="button button-primary button-large" id="startBtn" type="button">
+                  Start a new chart
+                  <span aria-hidden="true">→</span>
+                </button>
+                <button class="button button-secondary" id="menuTrendsBtn" type="button">
+                  View all-session trends
+                </button>
+              </div>
+              <p class="resume-note" id="resumeNote"></p>
+            </div>
+
+            <aside class="mission-card" aria-label="Game rules">
+              <div class="mission-card-top">
+                <span class="mission-icon" aria-hidden="true">⌖</span>
+                <span class="mission-kicker">TODAY'S MISSION</span>
+              </div>
+              <h2>Place every chart label correctly.</h2>
+              <ol class="mission-list">
+                <li><span>01</span> Read the prompt and locate the named route.</li>
+                <li><span>02</span> Click any section of that runway or taxiway.</li>
+                <li><span>03</span> Misses return to the shuffled queue until solved.</li>
+              </ol>
+              <div class="mission-footer">
+                <span id="questionCount">21 locations</span>
+                <span class="divider-dot">•</span>
+                <span>Progress auto-saves</span>
+              </div>
+            </aside>
+          </div>
+
+          <div class="feature-row">
+            <article class="feature-card">
+              <span class="feature-number">01</span>
+              <div>
+                <h2>Blank-chart focus</h2>
+                <p>The supplied blank airport chart is the canvas. Correct responses label it as you go.</p>
+              </div>
+            </article>
+            <article class="feature-card">
+              <span class="feature-number">02</span>
+              <div>
+                <h2>Adaptive retry queue</h2>
+                <p>A missed location reappears later in a randomized order—every answer must be correct once.</p>
+              </div>
+            </article>
+            <article class="feature-card">
+              <span class="feature-number">03</span>
+              <div>
+                <h2>Long-term memory</h2>
+                <p>Saved progress, completed sessions, timing, accuracy, and difficult locations stay on this device.</p>
+              </div>
+            </article>
+          </div>
+
+          <section class="validation-strip" aria-labelledby="validationModeTitle">
+            <div class="validation-strip-copy">
+              <span class="validation-orb" aria-hidden="true">⌁</span>
+              <div>
+                <p class="eyebrow">CONFIGURATION STUDIO</p>
+                <h2 id="validationModeTitle">Validate the question bank</h2>
+                <p>Review every prompt, inspect the current answer route, and draw any corrected route directly on the blank chart.</p>
+              </div>
+            </div>
+            <div class="validation-strip-actions">
+              <button class="button button-validation" id="validationBtn" type="button">Start validation run <span aria-hidden="true">→</span></button>
+              <p id="validationNote">Route changes are staged until the full review is complete.</p>
+            </div>
+          </section>
+
+          <section class="locations-strip" aria-labelledby="locationsModeTitle">
+            <div class="locations-strip-copy">
+              <span class="locations-orb" aria-hidden="true">◎</span>
+              <div>
+                <p class="eyebrow">AIRFIELD ORIENTATION</p>
+                <h2 id="locationsModeTitle">Learn airport locations</h2>
+                <p>Study the labelled location chart, then find navigation aids, facilities, weather equipment, and safety sites on the blank map.</p>
+              </div>
+            </div>
+            <div class="locations-strip-actions">
+              <button class="button button-locations" id="locationsBtn" type="button">Start locations lab <span aria-hidden="true">→</span></button>
+              <div class="locations-action-row">
+                <button class="button button-secondary" id="locationsValidationBtn" type="button">Validate locations</button>
+                <button class="button button-secondary" id="locationsTrendsBtn" type="button">Location trends</button>
+              </div>
+              <p id="locationsNote">Location progress and trends save separately for each user.</p>
+            </div>
+          </section>
+
+          <section class="yyc-ground-strip" aria-labelledby="yycGroundModeTitle">
+            <div class="yyc-ground-strip-copy">
+              <span class="yyc-ground-orb" aria-hidden="true">✦</span>
+              <div>
+                <p class="eyebrow">YYC GROUND SORT</p>
+                <h2 id="yycGroundModeTitle">YYC Ground Sort Program</h2>
+                <p>Locate each YYC ground point on the sector map, then decide whether it can be used by Jets, Props, or either.</p>
+              </div>
+            </div>
+            <div class="yyc-ground-strip-actions">
+              <button class="button button-yyc-ground" id="yycGroundBtn" type="button">Start ground sort <span aria-hidden="true">→</span></button>
+              <div class="locations-action-row">
+                <button class="button button-secondary" id="yycGroundValidationBtn" type="button">Validate ground points</button>
+                <button class="button button-secondary" id="yycGroundTrendsBtn" type="button">Ground sort trends</button>
+              </div>
+              <p id="yycGroundNote">Point locations, use classifications, and trends save separately for each user.</p>
+            </div>
+          </section>
+
+          <section class="flashcards-strip" aria-labelledby="flashcardsModeTitle">
+            <div class="flashcards-strip-copy">
+              <span class="flashcards-orb" aria-hidden="true">▤</span>
+              <div>
+                <p class="eyebrow">MEMORY STUDIO</p>
+                <h2 id="flashcardsModeTitle">Flashcard decks</h2>
+                <p>Create personal study decks, add cards with optional question and answer images, then rate each recall as Easy, Mid, or Hard.</p>
+              </div>
+            </div>
+            <div class="flashcards-strip-actions">
+              <button class="button button-flashcards" id="flashcardsBtn" type="button">Open flashcard decks <span aria-hidden="true">→</span></button>
+              <p id="flashcardsNote">Decks, recall ratings, and difficult-card stats are private to your player profile.</p>
+            </div>
+          </section>
+
+          <div class="memory-strip" id="memoryStrip">
+            <div>
+              <p class="eyebrow">SAVED MEMORY</p>
+              <strong id="memoryHeadline">No completed sessions yet</strong>
+              <span id="memoryDetail">Your first chart becomes the baseline.</span>
+            </div>
+            <div class="memory-strip-actions">
+              <button class="text-button" id="resetDataBtn" type="button">Reset my profile</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="screen hidden" id="gameScreen" aria-labelledby="gameTitle">
+          <div class="game-topline">
+            <div>
+              <p class="eyebrow" id="gameEyebrow">LIVE CHART</p>
+              <h1 id="gameTitle">Locate the route</h1>
+            </div>
+            <div class="game-topline-actions">
+              <div class="timer-readout" title="Active game time">
+                <span class="timer-label">TIME</span>
+                <strong id="timerValue">00:00</strong>
+              </div>
+              <button class="button button-quiet" id="pauseBtn" type="button">Save &amp; menu</button>
+            </div>
+          </div>
+
+          <div class="game-layout">
+            <div class="map-column">
+              <div class="map-frame" id="mapFrame">
+                <img
+                  id="airportMap"
+                  src="/assets/airport_blank.png"
+                  width="803"
+                  height="922"
+                  alt="Blank airport diagram used as the labelling game canvas"
+                  draggable="false"
+                />
+                <svg
+                  id="mapOverlay"
+                  viewBox="0 0 803 922"
+                  preserveAspectRatio="none"
+                  role="button"
+                  tabindex="0"
+                  aria-label="Airport diagram. Click to place the current route label."
+                >
+                  <g id="hintLayer" aria-hidden="true"></g>
+                  <g id="placementLayer" aria-hidden="true"></g>
+                  <g id="flashLayer" aria-hidden="true"></g>
+                </svg>
+                <div class="map-corner-label map-corner-north">N</div>
+                <div class="map-instruction" id="mapInstruction">Click the route on the chart</div>
+              </div>
+              <p class="map-caption" id="mapCaption">
+                Click any part of the named route. Use the labelled-chart reference or a temporary hint when needed.
+              </p>
+            </div>
+
+            <aside class="question-panel" aria-live="polite">
+              <div class="progress-wrap">
+                <div class="progress-meta">
+                  <span id="progressText">0 of 21 correctly labelled</span>
+                  <span id="remainingText">21 in queue</span>
+                </div>
+                <div class="progress-track" aria-hidden="true"><span id="progressFill"></span></div>
+              </div>
+
+              <div class="question-card">
+                <span class="category-pill" id="categoryPill">Taxiway</span>
+                <p class="question-prelude">LOCATE</p>
+                <h2 id="questionLabel">Loading chart…</h2>
+                <p class="question-clue" id="questionClue"></p>
+                <div class="ground-followup hidden" id="groundFollowup" aria-live="polite">
+                  <p>WHO CAN USE <strong id="groundFollowupPoint">THIS POINT</strong>?</p>
+                  <div class="ground-use-actions">
+                    <button class="ground-use-button jets" data-ground-use="Jets" type="button">Jets</button>
+                    <button class="ground-use-button props" data-ground-use="Props" type="button">Props</button>
+                    <button class="ground-use-button both" data-ground-use="Jets or Props" type="button">Jets or Props</button>
+                  </div>
+                </div>
+                <div class="answer-status neutral" id="answerStatus">
+                  <span class="answer-status-icon" aria-hidden="true">◎</span>
+                  <span>Choose a spot on the chart.</span>
+                </div>
+              </div>
+
+              <div class="score-row">
+                <div class="score-item">
+                  <span>ATTEMPTS</span>
+                  <strong id="attemptsValue">0</strong>
+                </div>
+                <div class="score-item">
+                  <span>MISSES</span>
+                  <strong id="missesValue">0</strong>
+                </div>
+                <div class="score-item">
+                  <span>ACCURACY</span>
+                  <strong id="accuracyValue">—</strong>
+                </div>
+              </div>
+
+              <div class="panel-actions">
+                <button class="button button-secondary" id="hintBtn" type="button">
+                  <span aria-hidden="true">◌</span> Show route hint
+                </button>
+                <button class="button button-secondary" id="referenceBtn" type="button">
+                  <span aria-hidden="true">▧</span> Study labelled chart
+                </button>
+              </div>
+              <p class="panel-footnote">Hints do not add a miss. Incorrect clicks are returned to the queue.</p>
+            </aside>
+          </div>
+        </section>
+
+        <section class="screen hidden" id="flashcardsScreen" aria-labelledby="flashcardsTitle">
+          <div class="trends-heading flashcards-heading">
+            <div>
+              <p class="eyebrow flashcards-eyebrow">MEMORY STUDIO</p>
+              <h1 id="flashcardsTitle">Flashcard decks</h1>
+              <p>Build focused study decks, track what needs more recall, and revisit cards at your own pace.</p>
+            </div>
+            <button class="button button-secondary" id="flashcardsHomeBtn" type="button">← Back home</button>
+          </div>
+
+          <section class="create-deck-card" aria-labelledby="createDeckTitle">
+            <div>
+              <p class="eyebrow flashcards-eyebrow">NEW DECK</p>
+              <h2 id="createDeckTitle">Start a study deck</h2>
+              <p>Give the deck a clear title. Cards begin as New until you rate them in a review.</p>
+            </div>
+            <div class="create-deck-form">
+              <input id="newDeckTitle" type="text" maxlength="100" placeholder="e.g., Airport operations essentials" autocomplete="off" />
+              <button class="button button-flashcards" id="createDeckBtn" type="button">Create deck <span aria-hidden="true">→</span></button>
+            </div>
+          </section>
+
+          <div class="deck-library" id="deckLibrary" aria-live="polite"></div>
+        </section>
+
+        <section class="screen hidden" id="flashcardDeckScreen" aria-labelledby="flashcardDeckTitle">
+          <div class="deck-topline">
+            <div>
+              <p class="eyebrow flashcards-eyebrow">STUDY DECK</p>
+              <h1 id="flashcardDeckTitle">Deck</h1>
+              <p id="flashcardDeckMeta"></p>
+            </div>
+            <div class="deck-topline-actions">
+              <button class="button button-secondary" id="deckStatsBtn" type="button">Deck stats</button>
+              <button class="button button-quiet" id="deckBackBtn" type="button">← All decks</button>
+            </div>
+          </div>
+
+          <div class="deck-summary-grid" id="deckSummaryGrid"></div>
+
+          <section class="deck-study-setup" aria-labelledby="deckStudySetupTitle">
+            <div>
+              <p class="eyebrow flashcards-eyebrow">REVIEW SETUP</p>
+              <h2 id="deckStudySetupTitle">Choose what to study</h2>
+              <p>Select the card state before starting. The selected cards are shuffled into this review round.</p>
+            </div>
+            <div class="study-filter-actions">
+              <label for="deckStudyFilter">CARD FILTER</label>
+              <select id="deckStudyFilter">
+                <option value="all">All</option>
+                <option value="new">New</option>
+                <option value="easy">Easy</option>
+                <option value="mid">Mid</option>
+                <option value="hard">Hard</option>
+              </select>
+              <button class="button button-flashcards" id="startDeckStudyBtn" type="button">Start review <span aria-hidden="true">→</span></button>
+              <button class="button button-secondary" id="addCardBtn" type="button">Add card</button>
+            </div>
+          </section>
+
+          <section class="deck-cards-section" aria-labelledby="deckCardsTitle">
+            <div class="chart-card-heading">
+              <div>
+                <p class="eyebrow flashcards-eyebrow">CARD LIBRARY</p>
+                <h2 id="deckCardsTitle">Cards in this deck</h2>
+              </div>
+              <p id="deckCardsCount"></p>
+            </div>
+            <div class="deck-card-list" id="deckCardList"></div>
+          </section>
+        </section>
+
+        <section class="screen hidden" id="flashcardStudyScreen" aria-labelledby="flashcardStudyTitle">
+          <div class="game-topline flashcard-study-topline">
+            <div>
+              <p class="eyebrow flashcards-eyebrow">FLASHCARD REVIEW</p>
+              <h1 id="flashcardStudyTitle">Deck review</h1>
+            </div>
+            <div class="game-topline-actions">
+              <span class="flashcard-progress" id="flashcardStudyProgress">0 / 0</span>
+              <button class="button button-quiet" id="exitStudyBtn" type="button">Exit review</button>
+            </div>
+          </div>
+
+          <div class="flashcard-study-shell">
+            <article class="study-card" id="studyCard" tabindex="0">
+              <div class="study-card-side study-card-question">
+                <span class="study-side-label">QUESTION</span>
+                <p id="studyQuestionText"></p>
+                <img id="studyQuestionImage" class="study-card-image hidden" alt="Question visual" />
+              </div>
+              <div class="study-card-answer hidden" id="studyAnswerPanel">
+                <span class="study-side-label">ANSWER</span>
+                <p id="studyAnswerText"></p>
+                <img id="studyAnswerImage" class="study-card-image hidden" alt="Answer visual" />
+              </div>
+            </article>
+            <p class="study-tip" id="studyTip">Think of the answer, then reveal the back of the card.</p>
+            <div class="study-actions" id="studyRevealActions">
+              <button class="button button-flashcards button-large" id="revealAnswerBtn" type="button">Reveal answer</button>
+              <button class="button button-secondary" id="editStudyCardBtn" type="button">Edit card</button>
+            </div>
+            <div class="study-rating-actions hidden" id="studyRatingActions">
+              <button class="rating-button rating-easy" data-rating="easy" type="button">Easy</button>
+              <button class="rating-button rating-mid" data-rating="mid" type="button">Mid</button>
+              <button class="rating-button rating-hard" data-rating="hard" type="button">Hard</button>
+              <button class="button button-quiet" id="editStudyCardAfterRevealBtn" type="button">Edit card</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="screen hidden" id="flashcardStatsScreen" aria-labelledby="flashcardStatsTitle">
+          <div class="trends-heading">
+            <div>
+              <p class="eyebrow flashcards-eyebrow">DECK INSIGHTS</p>
+              <h1 id="flashcardStatsTitle">Deck stats</h1>
+              <p id="flashcardStatsIntro"></p>
+            </div>
+            <button class="button button-secondary" id="statsBackToDeckBtn" type="button">← Back to deck</button>
+          </div>
+          <div class="deck-summary-grid" id="flashcardStatsGrid"></div>
+          <section class="flashcard-mistakes-card" aria-labelledby="commonMistakesTitle">
+            <div class="chart-card-heading">
+              <div>
+                <p class="eyebrow flashcards-eyebrow">FORGOTTEN MOST OFTEN</p>
+                <h2 id="commonMistakesTitle">Common mistakes</h2>
+              </div>
+              <p>Cards rated Hard count most heavily.</p>
+            </div>
+            <div id="commonMistakesList"></div>
+          </section>
+        </section>
+
+        <section class="screen hidden" id="validationScreen" aria-labelledby="validationTitle">
+          <div class="game-topline validation-topline">
+            <div>
+              <p class="eyebrow validation-eyebrow" id="validationEyebrow">CONFIGURATION VALIDATION</p>
+              <h1 id="validationTitle">Review the saved route</h1>
+            </div>
+            <div class="game-topline-actions">
+              <div class="timer-readout" title="Active validation time">
+                <span class="timer-label">REVIEW TIME</span>
+                <strong id="validationTimerValue">00:00</strong>
+              </div>
+              <button class="button button-quiet" id="validationPauseBtn" type="button">Save &amp; menu</button>
+            </div>
+          </div>
+
+          <div class="validation-review-layout">
+            <div class="validation-preview-column">
+              <div class="validation-preview-frame" id="validationPreviewFrame">
+                <img
+                  id="validationPreviewMap"
+                  src="/assets/airport_blank.png"
+                  width="803"
+                  height="922"
+                  alt="Blank airport diagram with the currently configured answer route"
+                  draggable="false"
+                />
+                <svg id="validationPreviewOverlay" viewBox="0 0 803 922" preserveAspectRatio="none" aria-hidden="true">
+                  <g id="validationPreviewRoute"></g>
+                </svg>
+                <div class="map-corner-label map-corner-north">N</div>
+                <div class="validation-preview-label" id="validationPreviewLabel">CURRENT SAVED ROUTE</div>
+              </div>
+              <p class="map-caption">Blue shows the exact route currently used by practice mode. It is a preview only—choose Edit to open the calibrated full-screen route editor.</p>
+            </div>
+
+            <aside class="question-panel validation-panel" aria-live="polite">
+              <div class="progress-wrap">
+                <div class="progress-meta">
+                  <span id="validationProgressText">Review 1 of 21</span>
+                  <span id="validationRemainingText">21 to review</span>
+                </div>
+                <div class="progress-track validation-progress-track" aria-hidden="true"><span id="validationProgressFill"></span></div>
+              </div>
+
+              <div class="question-card validation-question-card">
+                <span class="category-pill validation-category-pill" id="validationCategoryPill">Taxiway</span>
+                <p class="question-prelude">CURRENT ANSWER</p>
+                <h2 id="validationQuestionLabel">Loading route…</h2>
+                <p class="question-clue" id="validationQuestionClue"></p>
+                <span class="validation-source-pill" id="validationSourceValue">Supplied source route</span>
+                <div class="answer-status neutral" id="validationStatus">
+                  <span class="answer-status-icon" aria-hidden="true">?</span>
+                  <span>Does this route need editing?</span>
+                </div>
+              </div>
+
+              <div class="validation-review-question">
+                <strong>Does the blue route correctly answer this prompt?</strong>
+                <span>Select No to redraw it on a full-screen, calibrated map.</span>
+              </div>
+
+              <div class="validation-actions validation-review-actions">
+                <button class="button button-secondary" id="validationKeepBtn" type="button">Yes — keep route</button>
+                <button class="button button-validation" id="validationEditBtn" type="button">No — edit full screen <span aria-hidden="true">→</span></button>
+              </div>
+
+              <div class="validation-skip-wrap">
+                <button class="text-button" id="validationSkipToAddBtn" type="button">Skip remaining routes → Add questions</button>
+                <span>Skipped routes keep their existing answers.</span>
+              </div>
+
+              <div class="validation-tools validation-review-tools">
+                <button class="button button-secondary" id="validationDetailsBtn" type="button">Edit question details</button>
+                <button class="button button-secondary" id="validationReferenceBtn" type="button">Study labelled chart</button>
+              </div>
+              <p class="panel-footnote">Redrawn routes are staged safely. They update practice mode only after you complete the review and finish validation.</p>
+            </aside>
+          </div>
+        </section>
+
+        <section class="screen hidden" id="validationAddScreen" aria-labelledby="validationAddTitle">
+          <div class="completion-hero validation-completion-hero">
+            <p class="eyebrow validation-eyebrow" id="validationAddEyebrow">ROUTE REVIEW COMPLETE</p>
+            <h1 id="validationAddTitle">Question bank<br /><em>reviewed.</em></h1>
+            <p class="completion-lede" id="validationAddIntro">You can now add new runway or taxiway prompts to the practice bank, or finish validation and apply your staged route changes.</p>
+          </div>
+
+          <div class="summary-grid" id="validationAddSummaryGrid" aria-label="Validation review summary"></div>
+
+          <section class="validation-add-card" aria-labelledby="addQuestionTitle">
+            <span class="commit-icon" aria-hidden="true">+</span>
+            <div>
+              <p class="eyebrow">EXPAND THE DRILL</p>
+              <h2 id="addQuestionTitle">Add another question</h2>
+              <p id="addQuestionCopy">Open the full-screen route editor, name the question, choose a category, and draw its answer route. Added questions are saved to future practice sessions when validation is finished.</p>
+            </div>
+            <button class="button button-validation" id="addQuestionBtn" type="button">Add a question <span aria-hidden="true">→</span></button>
+          </section>
+
+          <div class="completion-actions">
+            <button class="button button-primary button-large" id="finishValidationBtn" type="button">Finish &amp; apply validation <span aria-hidden="true">→</span></button>
+            <button class="button button-quiet" id="validationAddHomeBtn" type="button">Save &amp; menu</button>
+          </div>
+        </section>
+
+        <section class="screen hidden" id="validationCompleteScreen" aria-labelledby="validationCompleteTitle">
+          <div class="completion-hero validation-completion-hero">
+            <p class="eyebrow validation-eyebrow">CONFIGURATION UPDATED</p>
+            <h1 id="validationCompleteTitle">The answer bank<br /><em>is validated.</em></h1>
+            <p class="completion-lede" id="validationCompleteIntro">Your route drawings have been committed to the saved game memory.</p>
+          </div>
+
+          <div class="summary-grid" id="validationSummaryGrid" aria-label="Validation summary"></div>
+
+          <section class="validation-commit-card" aria-label="Validation changes committed">
+            <span class="commit-icon" aria-hidden="true">✓</span>
+            <div>
+              <h2 id="validationCommitTitle">Practice mode now uses your validated routes.</h2>
+              <p id="validationCommitCopy">Any changed answer was stored in local memory only after this full validation run finished. Future hints and correct-answer checks use the new route geometry.</p>
+            </div>
+          </section>
+
+          <div class="completion-actions">
+            <button class="button button-primary button-large" id="validatedPracticeBtn" type="button">Open practice mode <span aria-hidden="true">→</span></button>
+            <button class="button button-secondary" id="validationCompleteHomeBtn" type="button">Home</button>
+          </div>
+        </section>
+
+        <section class="screen hidden" id="endScreen" aria-labelledby="endTitle">
+          <div class="completion-hero">
+            <p class="eyebrow">CHART COMPLETE</p>
+            <h1 id="endTitle">Every route<br /><em>accounted for.</em></h1>
+            <p id="endIntro" class="completion-lede">Your session has been saved to your trend history.</p>
+          </div>
+
+          <div class="summary-grid" id="summaryGrid" aria-label="Session summary"></div>
+
+          <section class="chart-card session-chart-card" aria-labelledby="sessionChartTitle">
+            <div class="chart-card-heading">
+              <div>
+                <p class="eyebrow">SESSION REVIEW</p>
+                <h2 id="sessionChartTitle">Incorrect-answer trend</h2>
+              </div>
+              <p>Cumulative misses by answer attempt</p>
+            </div>
+            <div id="sessionChart" class="chart-host"></div>
+          </section>
+
+          <div class="completion-actions">
+            <button class="button button-primary button-large" id="playAgainBtn" type="button">Play another chart <span aria-hidden="true">→</span></button>
+            <button class="button button-secondary" id="endTrendsBtn" type="button">View session trends</button>
+            <button class="button button-quiet" id="endHomeBtn" type="button">Home</button>
+          </div>
+        </section>
+
+        <section class="screen hidden" id="trendsScreen" aria-labelledby="trendsTitle">
+          <div class="trends-heading">
+            <div>
+              <p class="eyebrow">SAVED MEMORY</p>
+              <h1 id="trendsTitle">Session trends</h1>
+              <p>Every completed chart remains on this device so you can see improvement over time.</p>
+            </div>
+            <button class="button button-secondary" id="trendsHomeBtn" type="button">← Back home</button>
+          </div>
+
+          <div class="lifetime-grid" id="lifetimeGrid"></div>
+
+          <div class="trends-grid">
+            <section class="chart-card" aria-labelledby="allSessionChartTitle">
+              <div class="chart-card-heading">
+                <div>
+                  <p class="eyebrow">ALL COMPLETED CHARTS</p>
+                  <h2 id="allSessionChartTitle">Time and misses by session</h2>
+                </div>
+              </div>
+              <div id="allSessionsChart" class="chart-host"></div>
+            </section>
+
+            <section class="difficulty-card" aria-labelledby="difficultyTitle">
+              <div class="chart-card-heading">
+                <div>
+                  <p class="eyebrow">LOCATION MEMORY</p>
+                  <h2 id="difficultyTitle">Most missed locations</h2>
+                </div>
+              </div>
+              <div id="difficultyTable"></div>
+            </section>
+          </div>
+
+          <section class="session-history-card" aria-labelledby="historyTitle">
+            <div class="chart-card-heading">
+              <div>
+                <p class="eyebrow">ARCHIVE</p>
+                <h2 id="historyTitle">Completed chart history</h2>
+              </div>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Session</th>
+                    <th>Completed</th>
+                    <th>Time</th>
+                    <th>Attempts</th>
+                    <th>Misses</th>
+                    <th>Accuracy</th>
+                  </tr>
+                </thead>
+                <tbody id="historyTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal hidden" id="dataUpdateModal" role="dialog" aria-modal="true" aria-labelledby="dataUpdateTitle">
+      <div class="modal-backdrop" data-close-data-update="true"></div>
+      <div class="modal-card data-update-card">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">APPLICATION BACKUP</p>
+            <h2 id="dataUpdateTitle">Update data</h2>
+          </div>
+          <button class="icon-button" id="closeDataUpdateBtn" type="button" aria-label="Close data update">×</button>
+        </div>
+        <p class="modal-copy">Export a complete backup or import one to replace application data. Full exports include users, airport question banks, locations banks, YYC Ground Sort points and Jets/Props answers, validation edits, flashcard decks, cards, images, and Easy/Mid/Hard tags. JSON question-bank exports from earlier project versions are also accepted and update only the relevant bank.</p>
+        <div class="data-update-options">
+          <article>
+            <span class="data-update-icon" aria-hidden="true">↓</span>
+            <div>
+              <h3>Export all data</h3>
+              <p>Download one portable JSON backup of every saved profile and shared bank.</p>
+            </div>
+            <button class="button button-secondary" id="exportFullDataBtn" type="button">Export JSON</button>
+          </article>
+          <article>
+            <span class="data-update-icon" aria-hidden="true">↑</span>
+            <div>
+              <h3>Import all data</h3>
+              <p>Select a full Airport Label Quest backup. Importing replaces all current profiles and shared data.</p>
+            </div>
+            <label class="button button-validation import-full-data-label" for="importFullDataInput">Import JSON</label>
+            <input id="importFullDataInput" type="file" accept="application/json,.json" hidden />
+          </article>
+        </div>
+        <p class="data-update-status" id="dataUpdateStatus" aria-live="polite"></p>
+      </div>
+    </div>
+
+    <div class="modal hidden" id="referenceModal" role="dialog" aria-modal="true" aria-labelledby="referenceTitle">
+      <div class="modal-backdrop" data-close-modal="true"></div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">STUDY REFERENCE</p>
+            <h2 id="referenceTitle">Labelled airport chart</h2>
+          </div>
+          <button class="icon-button" id="closeReferenceBtn" type="button" aria-label="Close labelled chart">×</button>
+        </div>
+        <p class="modal-copy" id="referenceCopy">Use the supplied labelled chart to orient yourself. Close it, then place the requested label on the blank chart.</p>
+        <div class="reference-image-wrap">
+          <img id="referenceImage" src="/assets/airport_labelled.png" alt="Airport diagram with runway and taxiway labels" />
+        </div>
+      </div>
+    </div>
+
+    <div class="modal hidden" id="questionDetailsModal" role="dialog" aria-modal="true" aria-labelledby="questionDetailsTitle">
+      <div class="modal-backdrop" data-close-details="true"></div>
+      <div class="modal-card question-details-card">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow validation-eyebrow">VALIDATION DRAFT</p>
+            <h2 id="questionDetailsTitle">Edit question details</h2>
+          </div>
+          <button class="icon-button" id="closeQuestionDetailsBtn" type="button" aria-label="Close question details">×</button>
+        </div>
+        <p class="modal-copy">Change the prompt label and its description. This draft is applied to the shared question bank only when you finish validation.</p>
+        <div class="question-details-fields">
+          <label>
+            <span>QUESTION <b>*</b></span>
+            <input id="validationDetailLabel" type="text" maxlength="80" autocomplete="off" placeholder="e.g., Taxiway A" />
+          </label>
+          <label>
+            <span>DESCRIPTION</span>
+            <textarea id="validationDetailClue" maxlength="220" rows="4" placeholder="Describe where the route is on the chart"></textarea>
+          </label>
+          <label class="yyc-use-field hidden" id="validationYycUseField">
+            <span>WHO CAN USE THIS POINT? <b>*</b></span>
+            <select id="validationYycUse">
+              <option value="Jets">Jets</option>
+              <option value="Props">Props</option>
+              <option value="Jets or Props">Jets or Props</option>
+            </select>
+          </label>
+        </div>
+        <div class="question-details-actions">
+          <button class="button button-quiet" id="cancelQuestionDetailsBtn" type="button">Cancel</button>
+          <button class="button button-validation" id="saveQuestionDetailsBtn" type="button">Save details</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal hidden" id="flashcardModal" role="dialog" aria-modal="true" aria-labelledby="flashcardModalTitle">
+      <div class="modal-backdrop" data-close-flashcard="true"></div>
+      <div class="modal-card flashcard-modal-card">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow flashcards-eyebrow" id="flashcardModalEyebrow">NEW FLASHCARD</p>
+            <h2 id="flashcardModalTitle">Add card</h2>
+          </div>
+          <button class="icon-button" id="closeFlashcardModalBtn" type="button" aria-label="Close flashcard editor">×</button>
+        </div>
+        <p class="modal-copy">Question and answer text are required. Add an optional image to either side of the card.</p>
+        <div class="flashcard-editor-fields">
+          <label>
+            <span>QUESTION <b>*</b></span>
+            <textarea id="flashcardQuestionInput" maxlength="2000" rows="4" placeholder="Write the prompt or term"></textarea>
+          </label>
+          <div class="flashcard-image-field">
+            <div>
+              <span>QUESTION IMAGE</span>
+              <input id="flashcardQuestionImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
+              <button class="text-button hidden" id="removeQuestionImageBtn" type="button">Remove image</button>
+            </div>
+            <img id="flashcardQuestionImagePreview" class="flashcard-image-preview hidden" alt="Question image preview" />
+          </div>
+          <label>
+            <span>ANSWER <b>*</b></span>
+            <textarea id="flashcardAnswerInput" maxlength="2000" rows="4" placeholder="Write the answer or definition"></textarea>
+          </label>
+          <div class="flashcard-image-field">
+            <div>
+              <span>ANSWER IMAGE</span>
+              <input id="flashcardAnswerImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
+              <button class="text-button hidden" id="removeAnswerImageBtn" type="button">Remove image</button>
+            </div>
+            <img id="flashcardAnswerImagePreview" class="flashcard-image-preview hidden" alt="Answer image preview" />
+          </div>
+        </div>
+        <p class="flashcard-editor-status" id="flashcardEditorStatus" aria-live="polite"></p>
+        <div class="question-details-actions">
+          <button class="button button-quiet" id="cancelFlashcardModalBtn" type="button">Cancel</button>
+          <button class="button button-flashcards" id="saveFlashcardBtn" type="button">Save card</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="route-editor hidden" id="routeEditorModal" role="dialog" aria-modal="true" aria-labelledby="routeEditorTitle">
+      <div class="route-editor-header">
+        <div>
+          <p class="eyebrow validation-eyebrow" id="routeEditorEyebrow">EDIT CONFIGURED ROUTE</p>
+          <h2 id="routeEditorTitle">Draw the corrected route</h2>
+          <p id="routeEditorSubtitle">The map and drawing layer share the same 803 × 922 coordinate space.</p>
+        </div>
+        <button class="icon-button route-editor-close" id="routeEditorCloseBtn" type="button" aria-label="Cancel route editor">×</button>
+      </div>
+
+      <div class="route-editor-metadata hidden" id="routeEditorMetadata">
+        <label>
+          <span>Question label <b>*</b></span>
+          <input id="customQuestionLabel" type="text" maxlength="80" placeholder="e.g., Taxiway K" autocomplete="off" />
+        </label>
+        <label>
+          <span>Category <b>*</b></span>
+          <select id="customQuestionCategory">
+            <option value="Taxiway">Taxiway</option>
+            <option value="Runway">Runway</option>
+            <option value="Navigation aid">Navigation aid</option>
+            <option value="Weather">Weather</option>
+            <option value="Facility">Facility</option>
+            <option value="Operations">Operations</option>
+            <option value="Safety">Safety</option>
+            <option value="Reference point">Reference point</option>
+            <option value="YYC ground point">YYC ground point</option>
+          </select>
+        </label>
+        <label class="editor-clue-field">
+          <span>Optional clue</span>
+          <input id="customQuestionClue" type="text" maxlength="220" placeholder="Describe where the route is on the chart" autocomplete="off" />
+        </label>
+        <label class="yyc-use-field hidden" id="routeEditorYycUseField">
+          <span>Who can use this point? <b>*</b></span>
+          <select id="customYycUse">
+            <option value="Jets">Jets</option>
+            <option value="Props">Props</option>
+            <option value="Jets or Props">Jets or Props</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="route-editor-body">
+        <div class="route-editor-map-wrap">
+          <div class="route-editor-map-stage" id="routeEditorMapStage">
+            <img
+              id="routeEditorMap"
+              src="/assets/airport_blank.png"
+              width="803"
+              height="922"
+              alt="Full-screen blank airport diagram for route drawing"
+              draggable="false"
+            />
+            <svg id="routeEditorOverlay" viewBox="0 0 803 922" preserveAspectRatio="none" role="application" tabindex="0" aria-label="Draw the answer route on this airport chart">
+              <g id="routeEditorCurrentLayer" aria-hidden="true"></g>
+              <g id="routeEditorDraftLayer" aria-hidden="true"></g>
+            </svg>
+            <div class="route-editor-north">N</div>
+          </div>
+        </div>
+        <aside class="route-editor-sidebar">
+          <div class="editor-legend">
+            <span><i class="key-swatch current-route"></i>Current route</span>
+            <span><i class="key-swatch draft-route"></i>Your drawing</span>
+          </div>
+          <h3>Draw with confidence</h3>
+          <ol>
+            <li>Drag directly over the correct pavement or runway.</li>
+            <li>Release to finish a stroke; draw again for another section.</li>
+            <li>Use the labelled chart as a reference if needed.</li>
+          </ol>
+          <button class="button button-secondary" id="routeEditorToggleCurrentBtn" type="button">Hide current route</button>
+          <button class="button button-secondary" id="routeEditorReferenceBtn" type="button">Study labelled chart</button>
+          <p id="routeEditorStatus" class="route-editor-status">Draw one or more route strokes, then save.</p>
+        </aside>
+      </div>
+
+      <div class="route-editor-footer">
+        <button class="button button-quiet" id="routeEditorCancelBtn" type="button">Cancel</button>
+        <button class="button button-secondary" id="routeEditorClearBtn" type="button">Clear drawing</button>
+        <button class="button button-validation button-large" id="routeEditorSaveBtn" type="button" disabled>Save route &amp; continue <span aria-hidden="true">→</span></button>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="/static/game.js"></script>
+  </body>
+</html>

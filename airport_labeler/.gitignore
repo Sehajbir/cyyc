@@ -1,0 +1,22 @@
+# Python bytecode and virtual environments
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+
+# Local/editor operating-system files
+.DS_Store
+.vscode/
+.idea/
+
+# Runtime state: user profiles, validation drafts, and shared question-bank edits
+# belong on a persistent deployment volume, not in source control.
+data/*.json
+!data/.gitkeep
+
+# Container and test artefacts
+*.log
+.pytest_cache/
+.mypy_cache/
