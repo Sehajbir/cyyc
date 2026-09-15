@@ -40,6 +40,7 @@ from apron_ops_data import (
     public_apron_ops_question,
     APRON_OPS_DEFAULT_COUNT,
 )
+from quizlet_import import QuizletImportError, normalise_quizlet_url, parse_quizlet_pdf
 
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
@@ -52,6 +53,8 @@ MEMORY_FILE = DATA_DIR / "airport_labeler_memory.json"
 CURATED_MAIN_BANK_FILE = ROOT / "question_bank_curated.json"
 FLASHCARD_STATES = {"new", "easy", "mid", "hard"}
 FLASHCARD_IMAGE_PATTERN = re.compile(r"^data:image/(?:png|jpeg|jpg|webp|gif);base64,([A-Za-z0-9+/=]+)$", re.IGNORECASE)
+QUIZLET_PDF_PATTERN = re.compile(r"^data:application/(?:pdf|octet-stream);base64,([A-Za-z0-9+/=]+)$", re.IGNORECASE)
+QUIZLET_PDF_MAX_BYTES = 15_000_000
 
 
 class APIError(Exception):
@@ -3814,6 +3817,7 @@ class GameStore:
             "title": deck["title"],
             "created_at": deck.get("created_at"),
             "updated_at": deck.get("updated_at"),
+            "source": deck.get("source"),
             "stats": self._flashcard_deck_stats(deck),
         }
         if include_cards:
@@ -3847,6 +3851,97 @@ class GameStore:
             self._touch(profile)
             self._save()
             return {"deck": self._public_flashcard_deck(deck, include_cards=True), "state": self._memory_snapshot(key, profile)}
+
+    @staticmethod
+    def _decode_quizlet_pdf(value: Any) -> bytes:
+        """Accept the browser-supplied PDF (base64 data URL) and return raw bytes."""
+        if not isinstance(value, str) or not value:
+            raise APIError("Attach the PDF saved from the Quizlet print page.")
+        if len(value) > QUIZLET_PDF_MAX_BYTES * 4 // 3 + 64:
+            raise APIError("The PDF is too large. Quizlet print PDFs should be under 15 MB.")
+        match = QUIZLET_PDF_PATTERN.match(value)
+        if not match:
+            raise APIError("The uploaded file must be a PDF.")
+        try:
+            decoded = base64.b64decode(match.group(1), validate=True)
+        except (ValueError, base64.binascii.Error) as error:
+            raise APIError("The uploaded PDF could not be decoded.") from error
+        if len(decoded) > QUIZLET_PDF_MAX_BYTES:
+            raise APIError("The PDF is too large. Quizlet print PDFs should be under 15 MB.")
+        if b"%PDF" not in decoded[:1024]:
+            raise APIError("The uploaded file is not a PDF document.")
+        return decoded
+
+    def import_quizlet_deck(self, raw_username: Any, payload: dict[str, Any]) -> dict[str, Any]:
+        """Create a deck from a PDF printed from a Quizlet set.
+
+        The browser cannot fetch Quizlet directly (cross-origin) and this server
+        deliberately ships without a headless browser, so the user prints the
+        Quizlet print page to PDF and uploads it here. The PDF is parsed in
+        memory and discarded; only the resulting cards are stored. Every card
+        starts in the ``new`` state.
+        """
+        title = cleaned_text(payload.get("title"), "Deck name", 100)
+        try:
+            source_url = normalise_quizlet_url(payload.get("url"))
+        except QuizletImportError as error:
+            raise APIError(str(error)) from error
+        pdf_bytes = self._decode_quizlet_pdf(payload.get("pdf"))
+        # Parse outside the lock: it is CPU-bound and does not touch shared state.
+        try:
+            parsed_cards = parse_quizlet_pdf(pdf_bytes)
+        except QuizletImportError as error:
+            raise APIError(str(error)) from error
+        except Exception as error:  # pragma: no cover - defensive parser boundary
+            print(f"Quizlet PDF parse failure: {error!r}")
+            raise APIError("The PDF could not be read. Save the Quizlet print page again as a PDF and retry.") from error
+        finally:
+            del pdf_bytes
+        with self.lock:
+            key, profile = self._profile(raw_username, create=True)
+            existing_titles = {str(deck.get("title", "")).casefold() for deck in profile.get("flashcard_decks", [])}
+            if title.casefold() in existing_titles:
+                raise APIError("A deck with that name already exists. Choose a different name.")
+            if len(profile.get("flashcard_decks", [])) >= 500:
+                raise APIError("This profile already has the maximum number of flashcard decks.")
+            now = utc_now()
+            cards = []
+            for parsed in parsed_cards:
+                cards.append(
+                    {
+                        "id": f"card_{uuid.uuid4().hex[:12]}",
+                        "question": parsed.term,
+                        "answer": parsed.definition,
+                        "question_image": None,
+                        "answer_image": None,
+                        "status": "new",
+                        "review_count": 0,
+                        "easy_count": 0,
+                        "mid_count": 0,
+                        "hard_count": 0,
+                        "last_rating": None,
+                        "last_reviewed_at": None,
+                        "created_at": now,
+                        "updated_at": now,
+                    }
+                )
+            deck = {
+                "id": f"deck_{uuid.uuid4().hex[:12]}",
+                "title": title,
+                "created_at": now,
+                "updated_at": now,
+                "study_sessions": 0,
+                "source": {"type": "quizlet", "url": source_url, "imported_at": now, "card_count": len(cards)},
+                "cards": cards,
+            }
+            profile.setdefault("flashcard_decks", []).append(deck)
+            self._touch(profile)
+            self._save()
+            return {
+                "deck": self._public_flashcard_deck(deck, include_cards=True),
+                "imported_count": len(cards),
+                "state": self._memory_snapshot(key, profile),
+            }
 
     def flashcard_deck(self, raw_username: Any, deck_id: str) -> dict[str, Any]:
         with self.lock:
@@ -4087,6 +4182,8 @@ class AirportLabelHandler(BaseHTTPRequestHandler):
                     result = STORE.import_full_data(username, payload.get("data"))
                 elif path == "/api/flashcards/decks":
                     result = STORE.create_flashcard_deck(username, payload.get("title"))
+                elif path == "/api/flashcards/import/quizlet":
+                    result = STORE.import_quizlet_deck(username, payload)
                 elif len(parts) == 6 and parts[:4] == ["", "api", "flashcards", "decks"] and parts[5] == "cards":
                     result = STORE.add_flashcard(username, unquote(parts[4]), payload)
                 elif len(parts) == 7 and parts[:4] == ["", "api", "flashcards", "decks"] and parts[5] == "cards":

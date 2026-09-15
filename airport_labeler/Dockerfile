@@ -9,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # The game has no third-party dependencies; copy only runtime source and assets.
-COPY app.py game_data.py locations_data.py yyc_ground_data.py gates_data.py apron_ops_data.py questions.txt question_bank_curated.json ./
+COPY app.py game_data.py locations_data.py yyc_ground_data.py gates_data.py apron_ops_data.py pdf_text.py quizlet_import.py questions.txt question_bank_curated.json ./
 COPY static ./static
 COPY assets ./assets
 

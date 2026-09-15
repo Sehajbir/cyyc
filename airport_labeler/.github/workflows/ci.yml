@@ -21,7 +21,7 @@ jobs:
           python-version: "3.12"
 
       - name: Compile Python source
-        run: python -m py_compile app.py game_data.py locations_data.py yyc_ground_data.py gates_data.py apron_ops_data.py
+        run: python -m py_compile app.py game_data.py locations_data.py yyc_ground_data.py gates_data.py apron_ops_data.py pdf_text.py quizlet_import.py
 
       - name: Verify deploy assets
         run: |
@@ -36,6 +36,8 @@ jobs:
           test -f yyc_ground_data.py
           test -f gates_data.py
           test -f apron_ops_data.py
+          test -f pdf_text.py
+          test -f quizlet_import.py
           test -f questions.txt
           test -f question_bank_curated.json
           test -f static/index.html

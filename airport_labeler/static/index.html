@@ -549,6 +549,7 @@
             <div class="create-deck-form">
               <input id="newDeckTitle" type="text" maxlength="100" placeholder="e.g., Airport operations essentials" autocomplete="off" />
               <button class="button button-flashcards" id="createDeckBtn" type="button">Create deck <span aria-hidden="true">→</span></button>
+              <button class="button button-secondary" id="importQuizletBtn" type="button">Import from Quizlet</button>
             </div>
           </section>
 
@@ -967,6 +968,47 @@
         <div class="question-details-actions">
           <button class="button button-quiet" id="cancelQuestionDetailsBtn" type="button">Cancel</button>
           <button class="button button-validation" id="saveQuestionDetailsBtn" type="button">Save details</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal hidden" id="quizletImportModal" role="dialog" aria-modal="true" aria-labelledby="quizletImportTitle">
+      <div class="modal-backdrop" data-close-quizlet-import="true"></div>
+      <div class="modal-card quizlet-import-card">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow flashcards-eyebrow">IMPORT DECK</p>
+            <h2 id="quizletImportTitle">Import from Quizlet</h2>
+          </div>
+          <button class="icon-button" id="closeQuizletImportBtn" type="button" aria-label="Close Quizlet import">×</button>
+        </div>
+        <p class="modal-copy">Paste the print URL of the Quizlet set and name the new deck. Then attach the PDF of that print page: open the URL in your browser, choose the <strong>Table</strong> layout, press <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>P</kbd> and pick <strong>Save as PDF</strong>. Every term becomes a question and every definition becomes its answer, all tagged <strong>New</strong>.</p>
+        <div class="flashcard-editor-fields">
+          <label>
+            <span>QUIZLET PRINT URL <b>*</b></span>
+            <input id="quizletUrlInput" type="url" maxlength="500" placeholder="https://quizlet.com/123456789/print" autocomplete="off" inputmode="url" />
+          </label>
+          <label>
+            <span>DECK NAME <b>*</b></span>
+            <input id="quizletDeckNameInput" type="text" maxlength="100" placeholder="e.g., CYYC apron phraseology" autocomplete="off" />
+          </label>
+          <div class="flashcard-image-field quizlet-pdf-field">
+            <div>
+              <span>PRINTED PDF <b>*</b></span>
+              <input id="quizletPdfInput" type="file" accept="application/pdf,.pdf" />
+              <p class="quizlet-pdf-hint" id="quizletPdfHint">No file chosen. The PDF is read once to build cards and is not stored.</p>
+            </div>
+          </div>
+        </div>
+        <ol class="quizlet-steps">
+          <li><a id="quizletOpenLink" href="https://quizlet.com" target="_blank" rel="noopener noreferrer">Open the print page ↗</a> (sign in to Quizlet if prompted).</li>
+          <li>Choose the <strong>Table</strong> (or Glossary) layout.</li>
+          <li>Print → destination <strong>Save as PDF</strong>, then attach the file above.</li>
+        </ol>
+        <p class="flashcard-editor-status" id="quizletImportStatus" aria-live="polite"></p>
+        <div class="question-details-actions">
+          <button class="button button-quiet" id="cancelQuizletImportBtn" type="button">Cancel</button>
+          <button class="button button-flashcards" id="runQuizletImportBtn" type="button">Import deck <span aria-hidden="true">→</span></button>
         </div>
       </div>
     </div>

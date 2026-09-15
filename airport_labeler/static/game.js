@@ -153,6 +153,7 @@
   const routeEditorModal = $("routeEditorModal");
   const questionDetailsModal = $("questionDetailsModal");
   const flashcardModal = $("flashcardModal");
+  const quizletImportModal = $("quizletImportModal");
   const dataUpdateModal = $("dataUpdateModal");
   const toast = $("toast");
 
@@ -390,6 +391,7 @@
   async function showWelcome() {
     closeRouteEditor(true);
     closeFlashcardEditor();
+    closeQuizletImport();
     closeDataUpdate();
     closeQuestionDetails();
     closeReference();
@@ -2273,13 +2275,13 @@
   function renderDeckLibrary(decks) {
     const host = $("deckLibrary");
     if (!decks.length) {
-      host.innerHTML = `<div class="deck-library-empty"><div><strong>No flashcard decks yet</strong><br />Create a deck above, then add cards with questions, answers, and optional images.</div></div>`;
+      host.innerHTML = `<div class="deck-library-empty"><div><strong>No flashcard decks yet</strong><br />Create a deck above, add cards with questions, answers, and optional images, or import a set from Quizlet.</div></div>`;
       return;
     }
     host.innerHTML = decks.map((deck) => {
       const stats = deck.stats || {};
       return `<article class="deck-tile">
-        <div><p class="eyebrow flashcards-eyebrow">${stats.card_count || 0} CARDS</p><h2>${escapeHTML(deck.title)}</h2></div>
+        <div><p class="eyebrow flashcards-eyebrow">${stats.card_count || 0} CARDS${deck.source && deck.source.type === "quizlet" ? ' <span class="deck-source-pill" title="Imported from Quizlet">Quizlet</span>' : ""}</p><h2>${escapeHTML(deck.title)}</h2></div>
         <div class="deck-state-row">${flashcardStatePill("new")} <span class="deck-tile-meta">${stats.new_count || 0}</span> ${flashcardStatePill("easy")} <span class="deck-tile-meta">${stats.easy_count || 0}</span> ${flashcardStatePill("mid")} <span class="deck-tile-meta">${stats.mid_count || 0}</span> ${flashcardStatePill("hard")} <span class="deck-tile-meta">${stats.hard_count || 0}</span></div>
         <div class="deck-tile-footer"><span>${stats.total_reviews || 0} recall ratings</span><button class="button button-flashcards" data-open-deck="${escapeHTML(deck.id)}" type="button">Open deck</button></div>
       </article>`;
@@ -2324,6 +2326,113 @@
       await openFlashcardDeck(result.deck.id);
     } catch (error) {
       showToast(error.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  const QUIZLET_URL_PATTERN = /^(?:https?:\/\/)?(?:[a-z0-9-]+\.)*quizlet\.com\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?(?:(?:[a-z0-9-]+\/)?(\d{5,}))(?:\/[^?#]*)?(?:[?#].*)?$/i;
+
+  function quizletPrintUrl(value) {
+    const match = QUIZLET_URL_PATTERN.exec(String(value || "").trim());
+    return match ? `https://quizlet.com/${match[1]}/print` : "";
+  }
+
+  function setQuizletImportStatus(message, isError = false) {
+    const node = $("quizletImportStatus");
+    node.textContent = message || "";
+    node.classList.toggle("error", Boolean(isError));
+  }
+
+  function syncQuizletOpenLink() {
+    const link = $("quizletOpenLink");
+    const url = quizletPrintUrl($("quizletUrlInput").value);
+    link.href = url || "https://quizlet.com";
+    link.textContent = url ? "Open the print page ↗" : "Open Quizlet ↗";
+  }
+
+  function syncQuizletPdfHint() {
+    const input = $("quizletPdfInput");
+    const file = input.files && input.files[0];
+    $("quizletPdfHint").textContent = file
+      ? `${file.name} (${(file.size / 1024 / 1024).toFixed(file.size > 1024 * 1024 ? 1 : 2)} MB) ready to import.`
+      : "No file chosen. The PDF is read once to build cards and is not stored.";
+  }
+
+  function openQuizletImport() {
+    $("quizletUrlInput").value = "";
+    $("quizletDeckNameInput").value = $("newDeckTitle").value.trim();
+    $("quizletPdfInput").value = "";
+    syncQuizletPdfHint();
+    syncQuizletOpenLink();
+    setQuizletImportStatus("");
+    $("runQuizletImportBtn").disabled = false;
+    quizletImportModal.classList.remove("hidden");
+    window.setTimeout(() => $("quizletUrlInput").focus(), 30);
+  }
+
+  function closeQuizletImport() {
+    if (!quizletImportModal || quizletImportModal.classList.contains("hidden")) return;
+    if ($("runQuizletImportBtn").disabled) return; // import in progress
+    quizletImportModal.classList.add("hidden");
+  }
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("The PDF could not be read from disk."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function runQuizletImport() {
+    const urlInput = $("quizletUrlInput");
+    const nameInput = $("quizletDeckNameInput");
+    const pdfInput = $("quizletPdfInput");
+    const rawUrl = urlInput.value.trim();
+    const title = nameInput.value.trim();
+    const file = pdfInput.files && pdfInput.files[0];
+    if (!rawUrl || !quizletPrintUrl(rawUrl)) {
+      setQuizletImportStatus("Enter the Quizlet print URL, for example https://quizlet.com/123456789/print.", true);
+      urlInput.focus();
+      return;
+    }
+    if (!title) {
+      setQuizletImportStatus("Give the imported deck a name.", true);
+      nameInput.focus();
+      return;
+    }
+    if (!file) {
+      setQuizletImportStatus("Attach the PDF you saved from the Quizlet print page.", true);
+      pdfInput.focus();
+      return;
+    }
+    if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") {
+      setQuizletImportStatus("The attached file must be a PDF.", true);
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setQuizletImportStatus("That PDF is over 15 MB. Print with the Table layout to keep it small.", true);
+      return;
+    }
+    const button = $("runQuizletImportBtn");
+    button.disabled = true;
+    setQuizletImportStatus("Reading the PDF and building cards…");
+    try {
+      let pdf = await readFileAsDataUrl(file);
+      if (!/^data:application\/pdf;base64,/i.test(pdf)) {
+        pdf = `data:application/pdf;base64,${pdf.split(",")[1] || ""}`;
+      }
+      const result = await request("/api/flashcards/import/quizlet", "POST", { title, url: quizletPrintUrl(rawUrl), pdf });
+      state = result.state;
+      button.disabled = false;
+      closeQuizletImport();
+      $("newDeckTitle").value = "";
+      showToast(`Imported ${result.imported_count} card${result.imported_count === 1 ? "" : "s"} into ${result.deck.title}. All cards are tagged New.`);
+      await openFlashcardDeck(result.deck.id);
+    } catch (error) {
+      setQuizletImportStatus(error.message, true);
     } finally {
       button.disabled = false;
     }
@@ -2596,6 +2705,16 @@
     $("newDeckTitle").addEventListener("keydown", (event) => {
       if (event.key === "Enter") { event.preventDefault(); createFlashcardDeck(); }
     });
+    $("importQuizletBtn").addEventListener("click", openQuizletImport);
+    $("closeQuizletImportBtn").addEventListener("click", closeQuizletImport);
+    $("cancelQuizletImportBtn").addEventListener("click", closeQuizletImport);
+    $("runQuizletImportBtn").addEventListener("click", runQuizletImport);
+    $("quizletUrlInput").addEventListener("input", syncQuizletOpenLink);
+    $("quizletPdfInput").addEventListener("change", syncQuizletPdfHint);
+    [$("quizletUrlInput"), $("quizletDeckNameInput")].forEach((input) => input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); runQuizletImport(); }
+    }));
+    quizletImportModal.addEventListener("click", (event) => { if (event.target.dataset.closeQuizletImport) closeQuizletImport(); });
     $("deckBackBtn").addEventListener("click", showFlashcards);
     $("deckStatsBtn").addEventListener("click", showDeckStats);
     $("addCardBtn").addEventListener("click", () => openFlashcardEditor());
@@ -2702,6 +2821,7 @@
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
         if (!dataUpdateModal.classList.contains("hidden")) closeDataUpdate();
+        else if (!quizletImportModal.classList.contains("hidden")) closeQuizletImport();
         else if (!flashcardModal.classList.contains("hidden")) closeFlashcardEditor();
         else if (!questionDetailsModal.classList.contains("hidden")) closeQuestionDetails();
         else if (!routeEditorModal.classList.contains("hidden")) closeRouteEditor();

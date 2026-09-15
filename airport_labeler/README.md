@@ -93,6 +93,18 @@ The **Flashcard decks** segment is a per-user Quizlet-style study area.
 
 Images are stored as compact data URLs in the user profile JSON. Keep each source image below roughly 1.8 MB; the server enforces a 2 MB image limit per card side.
 
+### Import from Quizlet
+
+**Import from Quizlet** sits beside **Create deck** and builds a whole deck from a Quizlet set.
+
+1. Enter the set's print URL (for example `https://quizlet.com/123456789/print`; ordinary set links are accepted and converted) and a name for the new deck.
+2. Open that print page in your browser, choose the **Table** (or Glossary) layout, print it and pick **Save as PDF**.
+3. Attach the saved PDF and choose **Import deck**.
+
+The server reads the PDF with its own dependency-free parser (`pdf_text.py` / `quizlet_import.py`), reconstructs the table rows, and creates one card per term/definition pair — the term becomes the question and the definition the answer. Every imported card starts with the **New** tag, the deck records its Quizlet source URL, and the PDF itself is discarded after parsing (only the cards are stored). The upload limit is 15 MB per PDF.
+
+Quizlet blocks automated browsers and this app intentionally ships with no headless browser, which is why the print page is saved by you rather than fetched by the server.
+
 ## Airport locations learning mode
 
 Choose **Learn airport locations** from the main menu to work with the supplied
@@ -152,6 +164,8 @@ airport_labeler/
 ├── game_data.py               # Fallback main question bank and route hit areas
 ├── locations_data.py          # Locations-learning question bank and marker hit areas
 ├── yyc_ground_data.py         # YYC Ground Sort points and Jets/Props answers
+├── pdf_text.py                # Dependency-free PDF text/table extraction
+├── quizlet_import.py          # Quizlet print-PDF → term/definition card pairs
 ├── questions.txt              # Supplied curated main question/answer list
 ├── question_bank_curated.json # JSON form parsed from questions.txt at project setup
 ├── Dockerfile                 # Production container image
