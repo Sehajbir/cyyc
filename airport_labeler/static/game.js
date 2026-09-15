@@ -127,6 +127,7 @@
   const screens = [
     $("welcomeScreen"),
     $("menuScreen"),
+    $("apronOpsScreen"),
     $("flashcardsScreen"),
     $("flashcardDeckScreen"),
     $("flashcardStudyScreen"),
@@ -269,6 +270,8 @@
 
   function closeReference() {
     $("referenceModal").classList.add("hidden");
+    const tabs = $("referenceTabs");
+    if (tabs) tabs.classList.add("hidden");
   }
 
   function closeQuestionDetails() {
@@ -440,6 +443,7 @@
     const locations = state && state.locations;
     const yycGround = state && state.yyc_ground;
     const gates = state && state.gates;
+    const apronOps = state && state.apron_ops;
     const validation = state && state.validation;
     const locationsValidation = state && state.locations_validation;
     const yycGroundValidation = state && state.yyc_ground_validation;
@@ -450,6 +454,8 @@
       status.innerHTML = '<span class="status-dot"></span> Locations validation saving';
     } else if (validation && validation.is_running) {
       status.innerHTML = '<span class="status-dot"></span> Validation saving';
+    } else if (apronOps && apronOps.is_running) {
+      status.innerHTML = '<span class="status-dot"></span> Apron Ops progress saving';
     } else if (gates && gates.is_running) {
       status.innerHTML = '<span class="status-dot"></span> Gates progress saving';
     } else if (yycGround && yycGround.is_running) {
@@ -462,6 +468,8 @@
       status.innerHTML = '<span class="status-dot"></span> YYC validation draft saved';
     } else if (locationsValidation) {
       status.innerHTML = '<span class="status-dot"></span> Locations validation draft saved';
+    } else if (apronOps) {
+      status.innerHTML = '<span class="status-dot"></span> Apron Ops progress saved';
     } else if (gates) {
       status.innerHTML = '<span class="status-dot"></span> Gates progress saved';
     } else if (yycGround) {
@@ -582,6 +590,27 @@
     } else {
       gatesBtn.innerHTML = 'Start gates lab <span aria-hidden="true">→</span>';
       gatesNote.textContent = history.gates_session_count ? `${gatesTotal} gates are ready for another identification run.` : `${gatesTotal} gates are ready to learn from the blank diagram.`;
+    }
+
+    const apronOps = state.apron_ops;
+    const apronOpsBtn = $("apronOpsBtn");
+    const apronOpsNote = $("apronOpsNote");
+    const apronTotal = state.apron_ops_question_total || 15;
+    if (apronOps) {
+      apronOpsBtn.innerHTML = 'Resume Apron Ops <span aria-hidden="true">→</span>';
+      apronOpsNote.replaceChildren();
+      apronOpsNote.append(document.createTextNode(`${apronOps.completed_count} of ${apronOps.question_total} clearances issued · ${formatCompactDuration(apronOps.elapsed_seconds)} recorded. `));
+      const discard = document.createElement("button");
+      discard.type = "button";
+      discard.className = "text-button";
+      discard.textContent = "Discard and restart";
+      discard.addEventListener("click", replaceApronOpsGame);
+      apronOpsNote.append(discard);
+    } else {
+      apronOpsBtn.innerHTML = 'Start Apron Ops <span aria-hidden="true">→</span>';
+      apronOpsNote.textContent = history.apron_ops_session_count
+        ? `${apronTotal} clearances are ready for another Apron Ops run.`
+        : "15 clearances ready. Pushback spots, exit/entry taxiways, and ground frequencies according to CYYC runway rules.";
     }
 
     const deckCount = history.flashcard_deck_count || 0;
@@ -1550,6 +1579,325 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Apron Ops Mode
+  // ---------------------------------------------------------------------------
+  let selectedSpot = null;
+  let selectedExitTaxiway = null;
+  let selectedEntryTaxiway = null;
+  let selectedGround = null;
+  let apronAdvanceTimer = null;
+
+  async function beginApronOpsGame() {
+    try {
+      state = await request("/api/apron-ops/new", "POST", {});
+      renderApronOpsGame(state.apron_ops);
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  async function replaceApronOpsGame() {
+    if (!window.confirm("Discard the saved Apron Ops session? Completed apron trends will remain.")) return;
+    try {
+      state = await request("/api/apron-ops/new", "POST", { replace_active: true });
+      renderApronOpsGame(state.apron_ops);
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  async function startOrResumeApronOps() {
+    if (state && state.apron_ops) {
+      try {
+        state = await request("/api/apron-ops/resume", "POST", {});
+        renderApronOpsGame(state.apron_ops);
+      } catch (error) {
+        showToast(error.message, "error");
+      }
+    } else {
+      await beginApronOpsGame();
+    }
+  }
+
+  function renderApronOpsGame(active) {
+    if (!active || !active.current) {
+      showToast("No active Apron Ops clearance could be found.", "error");
+      return;
+    }
+    clearTimeout(apronAdvanceTimer);
+    closeReference();
+    activePlayMode = "apron";
+    showScreen($("apronOpsScreen"));
+
+    const current = active.current;
+    const isDeparture = current.request_type === "departure";
+
+    $("apronProgressText").textContent = `${active.completed_count} of ${active.question_total} clearances issued`;
+    $("apronRemainingText").textContent = `${active.remaining_count} ${active.remaining_count === 1 ? "item" : "items"} in queue`;
+    $("apronProgressFill").style.width = `${(active.completed_count / active.question_total) * 100}%`;
+    $("apronAttemptsValue").textContent = active.attempts;
+    $("apronMissesValue").textContent = active.incorrect;
+    $("apronAccuracyValue").textContent = active.attempts
+      ? `${Math.round(((active.attempts - active.incorrect) / active.attempts) * 100)}%`
+      : "—";
+
+    const typePill = $("apronTypePill");
+    typePill.textContent = isDeparture ? "DEPARTURE" : "ARRIVAL";
+    typePill.className = `flight-type-pill ${isDeparture ? "departure" : "arrival"}`;
+    $("apronCallsign").textContent = current.callsign;
+    $("apronAircraft").textContent = current.aircraft;
+    $("apronGate").textContent = current.gate_label;
+    $("apronConcourse").textContent = current.concourse;
+    $("apronRunway").textContent = current.runway;
+    $("apronOperation").textContent = isDeparture ? "Pushback (Exit Apron)" : "Apron Entry (Park at Gate)";
+    $("apronTransmission").textContent = `"${current.transmission}"`;
+
+    $("apronFeedbackCard").classList.add("hidden");
+    $("apronFeedbackCard").className = "apron-feedback-card hidden";
+
+    $("departureControls").classList.toggle("hidden", !isDeparture);
+    $("arrivalControls").classList.toggle("hidden", isDeparture);
+
+    selectedSpot = null;
+    selectedExitTaxiway = null;
+    selectedEntryTaxiway = null;
+    selectedGround = null;
+
+    const opts = current.options || {};
+    const spotsList = opts.spots || ["4", "5", "6", "7", "10", "11", "14", "15", "16", "17", "23", "24"];
+    const taxiwaysList = opts.taxiways || ["BA", "BC", "E", "EA", "G", "HB", "HD", "JR", "JS", "JT", "K"];
+    const groundList = opts.ground_freqs || ["West Ground (121.9)", "East Ground (125.35)"];
+
+    const spotContainer = $("spotPills");
+    spotContainer.replaceChildren();
+    spotsList.forEach((sp) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "selector-pill";
+      btn.textContent = `Spot ${sp}`;
+      btn.dataset.value = sp;
+      btn.addEventListener("click", () => {
+        selectedSpot = sp;
+        spotContainer.querySelectorAll(".selector-pill").forEach((el) => el.classList.toggle("selected", el.dataset.value === sp));
+        updateApronClearancePreview(current);
+      });
+      spotContainer.appendChild(btn);
+    });
+
+    const exitContainer = $("exitTaxiwayPills");
+    exitContainer.replaceChildren();
+    taxiwaysList.forEach((tw) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "selector-pill";
+      btn.textContent = tw;
+      btn.dataset.value = tw;
+      btn.addEventListener("click", () => {
+        selectedExitTaxiway = tw;
+        exitContainer.querySelectorAll(".selector-pill").forEach((el) => el.classList.toggle("selected", el.dataset.value === tw));
+        updateApronClearancePreview(current);
+      });
+      exitContainer.appendChild(btn);
+    });
+
+    const groundContainer = $("groundFreqPills");
+    groundContainer.replaceChildren();
+    groundList.forEach((gf) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "selector-pill";
+      btn.textContent = gf;
+      btn.dataset.value = gf;
+      btn.addEventListener("click", () => {
+        selectedGround = gf;
+        groundContainer.querySelectorAll(".selector-pill").forEach((el) => el.classList.toggle("selected", el.dataset.value === gf));
+        updateApronClearancePreview(current);
+      });
+      groundContainer.appendChild(btn);
+    });
+
+    const entryContainer = $("entryTaxiwayPills");
+    entryContainer.replaceChildren();
+    taxiwaysList.forEach((tw) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "selector-pill";
+      btn.textContent = tw;
+      btn.dataset.value = tw;
+      btn.addEventListener("click", () => {
+        selectedEntryTaxiway = tw;
+        entryContainer.querySelectorAll(".selector-pill").forEach((el) => el.classList.toggle("selected", el.dataset.value === tw));
+        updateApronClearancePreview(current);
+      });
+      entryContainer.appendChild(btn);
+    });
+
+    renderApronGateHighlight(current.coords);
+    updateApronClearancePreview(current);
+    startTimer(active, $("apronTimerValue"));
+    setSavedStatus();
+  }
+
+  function renderApronGateHighlight(coords) {
+    const layer = $("apronHighlightLayer");
+    layer.replaceChildren();
+    if (!coords || !Array.isArray(coords) || coords.length < 2) return;
+    const [x, y] = coords;
+
+    const beacon = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    beacon.setAttribute("cx", x);
+    beacon.setAttribute("cy", y);
+    beacon.setAttribute("r", "20");
+    beacon.setAttribute("class", "apron-gate-beacon");
+
+    const pulse = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    pulse.setAttribute("cx", x);
+    pulse.setAttribute("cy", y);
+    pulse.setAttribute("r", "32");
+    pulse.setAttribute("class", "apron-gate-pulse");
+
+    layer.appendChild(pulse);
+    layer.appendChild(beacon);
+  }
+
+  function updateApronClearancePreview(current) {
+    const isDeparture = current.request_type === "departure";
+    const submitBtn = $("apronSubmitBtn");
+    const previewEl = $("clearancePreviewText");
+
+    if (isDeparture) {
+      const ready = !!(selectedSpot && selectedExitTaxiway && selectedGround);
+      submitBtn.disabled = !ready;
+      if (ready) {
+        previewEl.innerHTML = `<em>"${escapeHTML(current.callsign)}, push back to Spot ${escapeHTML(selectedSpot)}, exit Apron via Taxiway ${escapeHTML(selectedExitTaxiway)}, contact ${escapeHTML(selectedGround)}."</em>`;
+      } else {
+        const missing = [];
+        if (!selectedSpot) missing.push("pushback spot");
+        if (!selectedExitTaxiway) missing.push("exit taxiway");
+        if (!selectedGround) missing.push("ground frequency");
+        previewEl.textContent = `Select ${missing.join(", ")} above to formulate instruction.`;
+      }
+    } else {
+      const ready = !!selectedEntryTaxiway;
+      submitBtn.disabled = !ready;
+      if (ready) {
+        previewEl.innerHTML = `<em>"${escapeHTML(current.callsign)}, enter Apron via Taxiway ${escapeHTML(selectedEntryTaxiway)} to ${escapeHTML(current.gate_label)}."</em>`;
+      } else {
+        previewEl.textContent = "Select entry taxiway above to formulate instruction.";
+      }
+    }
+  }
+
+  async function submitApronClearance() {
+    const active = state && state.apron_ops;
+    if (!active || !active.current) return;
+    const current = active.current;
+    const isDeparture = current.request_type === "departure";
+
+    const payload = isDeparture
+      ? { spot: selectedSpot, taxiway: selectedExitTaxiway, ground: selectedGround }
+      : { taxiway: selectedEntryTaxiway };
+
+    $("apronSubmitBtn").disabled = true;
+
+    try {
+      const result = await request("/api/apron-ops/answer", "POST", payload);
+      state = result.state;
+
+      const fbCard = $("apronFeedbackCard");
+      fbCard.className = `apron-feedback-card ${result.correct ? "correct" : "incorrect"}`;
+      fbCard.classList.remove("hidden");
+      $("apronFeedbackStatus").querySelector("strong").textContent = result.correct ? "Clearance Accepted" : "Clearance Rejected";
+      $("apronFeedbackIcon").textContent = result.correct ? "✓" : "✗";
+      $("apronFeedbackDetail").textContent = result.feedback;
+
+      const breakdownEl = $("apronFeedbackBreakdown");
+      if (!result.correct && result.breakdown) {
+        const b = result.breakdown;
+        breakdownEl.replaceChildren();
+        if (isDeparture) {
+          const list = document.createElement("ul");
+          list.style.margin = "0";
+          list.style.paddingLeft = "18px";
+          const spotLi = document.createElement("li");
+          spotLi.textContent = `Spot: ${b.selected_spot} (${b.spot_correct ? "Correct" : `Incorrect — expected ${b.correct_spots.join(" or ")}`})`;
+          spotLi.style.color = b.spot_correct ? "#059669" : "#e11d48";
+          const twLi = document.createElement("li");
+          twLi.textContent = `Exit Taxiway: ${b.selected_taxiway} (${b.taxiway_correct ? "Correct" : `Incorrect — expected ${b.correct_taxiways.join(" or ")}`})`;
+          twLi.style.color = b.taxiway_correct ? "#059669" : "#e11d48";
+          const gLi = document.createElement("li");
+          gLi.textContent = `Ground Frequency: ${b.selected_ground} (${b.ground_correct ? "Correct" : `Incorrect — expected ${b.correct_ground}`})`;
+          gLi.style.color = b.ground_correct ? "#059669" : "#e11d48";
+          list.appendChild(spotLi);
+          list.appendChild(twLi);
+          list.appendChild(gLi);
+          breakdownEl.appendChild(list);
+        } else {
+          breakdownEl.textContent = `Chose Taxiway ${b.selected_taxiway}. Correct taxiway: ${b.correct_taxiways.join(" or ")}.`;
+        }
+        breakdownEl.classList.remove("hidden");
+      } else {
+        breakdownEl.classList.add("hidden");
+      }
+
+      setSavedStatus();
+
+      const nextActive = state && state.apron_ops;
+      if (result.finished) {
+        lastSummary = result.summary;
+        stopTimer();
+        window.setTimeout(() => renderCompletion(result.summary, "apron"), 1200);
+      } else {
+        $("apronNextBtn").onclick = () => renderApronOpsGame(nextActive);
+        if (result.correct) {
+          apronAdvanceTimer = window.setTimeout(() => {
+            renderApronOpsGame(nextActive);
+          }, 1400);
+        }
+      }
+    } catch (error) {
+      showToast(error.message, "error");
+      $("apronSubmitBtn").disabled = false;
+    }
+  }
+
+  function openApronStudyGuide(initialTab = "gates") {
+    const tabs = $("referenceTabs");
+    tabs.classList.remove("hidden");
+
+    function setTab(tab) {
+      $("refTabGates").classList.toggle("active", tab === "gates");
+      $("refTabRules17").classList.toggle("active", tab === "rules17");
+      $("refTabRules35").classList.toggle("active", tab === "rules35");
+
+      if (tab === "gates") {
+        $("referenceTitle").textContent = "CYYC Gate Locations (Gates.png)";
+        $("referenceCopy").textContent = "Gates: 1-6, 11-24 (Concourse A), 31-40 (Concourse B), 50-59 (Concourse C), 70-76, 78-79 (Concourse D), 80-92, 94-97 (Concourse E).";
+        $("referenceImage").src = "/assets/Gates.png";
+        $("referenceImage").alt = "CYYC Gates Diagram";
+      } else if (tab === "rules17") {
+        $("referenceTitle").textContent = "Runway 17L & 17R Rules (Rules_17)";
+        $("referenceCopy").textContent = "Pushback spots, exit/entry taxiways, and ground frequencies for Runways 17L and 17R.";
+        $("referenceImage").src = "/assets/Rules_17.png";
+        $("referenceImage").alt = "Rules for Runway 17L and 17R";
+      } else if (tab === "rules35") {
+        $("referenceTitle").textContent = "Runway 35L & 35R Rules (Rules_35)";
+        $("referenceCopy").textContent = "Pushback spots, exit/entry taxiways, and ground frequencies for Runways 35L and 35R.";
+        $("referenceImage").src = "/assets/Rules_35.png";
+        $("referenceImage").alt = "Rules for Runway 35L and 35R";
+      }
+    }
+
+    $("refTabGates").onclick = () => setTab("gates");
+    $("refTabRules17").onclick = () => setTab("rules17");
+    $("refTabRules35").onclick = () => setTab("rules35");
+
+    setTab(initialTab);
+    $("referenceModal").classList.remove("hidden");
+  }
+
+
   async function beginYycGroundGame() {
     try {
       state = await request("/api/yyc-ground/new", "POST", {});
@@ -1588,6 +1936,7 @@
     if (state.locations && state.locations.is_running) state = await request("/api/locations/pause", "POST", {});
     if (state.yyc_ground && state.yyc_ground.is_running) state = await request("/api/yyc-ground/pause", "POST", {});
     if (state.gates && state.gates.is_running) state = await request("/api/gates/pause", "POST", {});
+    if (state.apron_ops && state.apron_ops.is_running) state = await request("/api/apron-ops/pause", "POST", {});
     if (state.validation && state.validation.is_running) state = await request("/api/validation/pause", "POST", {});
     if (state.locations_validation && state.locations_validation.is_running) state = await request("/api/locations/validation/pause", "POST", {});
     if (state.yyc_ground_validation && state.yyc_ground_validation.is_running) state = await request("/api/yyc-ground/validation/pause", "POST", {});
@@ -1625,15 +1974,16 @@
     const isLocations = mode === "locations";
     const isYyc = mode === "yyc";
     const isGates = mode === "gates";
+    const isApron = mode === "apron";
     const wrongQuestionIds = new Set((summary.events || []).filter((event) => !event.correct).map((event) => event.question_id));
     const firstPass = Math.max(0, summary.question_total - wrongQuestionIds.size);
-    $("endTitle").innerHTML = isYyc ? "Every ground point<br /><em>sorted.</em>" : (isGates ? "Every gate<br /><em>identified.</em>" : (isLocations ? "Every marker<br /><em>accounted for.</em>" : "Every route<br /><em>accounted for.</em>"));
-    $("endIntro").textContent = `Completed on ${formatDate(summary.finished_at)}. This ${isYyc ? "YYC Ground Sort" : (isGates ? "gates-lab" : (isLocations ? "locations-lab" : "chart"))} result is now part of your saved trend history.`;
+    $("endTitle").innerHTML = isApron ? "Every apron clearance<br /><em>issued.</em>" : (isYyc ? "Every ground point<br /><em>sorted.</em>" : (isGates ? "Every gate<br /><em>identified.</em>" : (isLocations ? "Every marker<br /><em>accounted for.</em>" : "Every route<br /><em>accounted for.</em>")));
+    $("endIntro").textContent = `Completed on ${formatDate(summary.finished_at)}. This ${isApron ? "Apron Ops" : (isYyc ? "YYC Ground Sort" : (isGates ? "gates-lab" : (isLocations ? "locations-lab" : "chart")))} result is now part of your saved trend history.`;
     $("summaryGrid").innerHTML = [
-      summaryCard("TOTAL TIME", formatDuration(summary.duration_seconds), isYyc ? "Active Ground Sort time" : (isGates ? "Active gates-lab time" : (isLocations ? "Active locations-lab time" : "Active chart time"))),
-      summaryCard(isYyc ? "INCORRECT RESPONSES" : "INCORRECT CLICKS", String(summary.incorrect), summary.incorrect === 1 ? "One retry was needed" : "Retries returned to queue"),
-      summaryCard("ATTEMPTS", String(summary.attempts), `${summary.question_total} ${isYyc ? "points sorted" : (isGates ? "gates" : (isLocations ? "markers" : "labels"))} solved`),
-      summaryCard(isYyc ? "FIRST-PASS POINTS" : (isGates ? "FIRST-PASS GATES" : (isLocations ? "FIRST-PASS MARKERS" : "FIRST-PASS LABELS")), String(firstPass), `${summary.accuracy}% answer accuracy`),
+      summaryCard("TOTAL TIME", formatDuration(summary.duration_seconds), isApron ? "Active Apron Ops time" : (isYyc ? "Active Ground Sort time" : (isGates ? "Active gates-lab time" : (isLocations ? "Active locations-lab time" : "Active chart time")))),
+      summaryCard(isApron ? "INCORRECT CLEARANCES" : (isYyc ? "INCORRECT RESPONSES" : "INCORRECT CLICKS"), String(summary.incorrect), summary.incorrect === 1 ? "One retry was needed" : "Retries returned to queue"),
+      summaryCard("ATTEMPTS", String(summary.attempts), `${summary.question_total} ${isApron ? "clearances" : (isYyc ? "points sorted" : (isGates ? "gates" : (isLocations ? "markers" : "labels")))} solved`),
+      summaryCard(isApron ? "FIRST-PASS CLEARANCES" : (isYyc ? "FIRST-PASS POINTS" : (isGates ? "FIRST-PASS GATES" : (isLocations ? "FIRST-PASS MARKERS" : "FIRST-PASS LABELS"))), String(firstPass), `${summary.accuracy}% answer accuracy`),
     ].join("");
     $("sessionChartTitle").textContent = isLocations ? "Incorrect-marker trend" : "Incorrect-answer trend";
     renderSessionTrend($("sessionChart"), summary);
@@ -1774,9 +2124,10 @@
     if (!attempted.length) {
       const isLocations = activeTrendsMode === "locations";
       const isYyc = activeTrendsMode === "yyc";
+      const isApron = activeTrendsMode === "apron";
       $("difficultyTable").innerHTML = svgEmpty(
-        isLocations ? "No location attempts yet" : (isYyc ? "No Ground Sort attempts yet" : "No route attempts yet"),
-        isLocations ? "Your missed airport markers will be ranked here." : (isYyc ? "Missed YYC points and aircraft-use follow-ups will be ranked here." : "Your missed locations will be ranked here.")
+        isApron ? "No Apron Ops attempts yet" : (isLocations ? "No location attempts yet" : (isYyc ? "No Ground Sort attempts yet" : "No route attempts yet")),
+        isApron ? "Your missed gates and clearances will be ranked here." : (isLocations ? "Your missed airport markers will be ranked here." : (isYyc ? "Missed YYC points and aircraft-use follow-ups will be ranked here." : "Your missed locations will be ranked here."))
       );
       return;
     }
@@ -1791,8 +2142,9 @@
 
   function renderHistory(sessions, mode = "main") {
     const host = $("historyTableBody");
-    const noun = mode === "locations" ? "locations labs" : (mode === "yyc" ? "Ground Sort runs" : "charts");
-    const rowName = mode === "locations" ? "Lab" : (mode === "yyc" ? "Run" : "Chart");
+    const isApron = mode === "apron";
+    const noun = isApron ? "Apron Ops sessions" : (mode === "locations" ? "locations labs" : (mode === "yyc" ? "Ground Sort runs" : (mode === "gates" ? "gates labs" : "charts")));
+    const rowName = isApron ? "Session" : (mode === "locations" ? "Lab" : (mode === "yyc" ? "Run" : (mode === "gates" ? "Lab" : "Chart")));
     if (!sessions.length) {
       host.innerHTML = `<tr><td colspan="6" class="empty-table">No completed ${noun} saved yet.</td></tr>`;
       return;
@@ -1814,13 +2166,13 @@
     stopTimer();
     try {
       await pauseOpenSessions();
-      const trendsPath = mode === "locations" ? "/api/locations/trends" : (mode === "yyc" ? "/api/yyc-ground/trends" : (mode === "gates" ? "/api/gates/trends" : "/api/trends"));
+      const trendsPath = mode === "locations" ? "/api/locations/trends" : (mode === "yyc" ? "/api/yyc-ground/trends" : (mode === "gates" ? "/api/gates/trends" : (mode === "apron" ? "/api/apron-ops/trends" : "/api/trends")));
       const trends = await request(trendsPath);
       const owner = (trends.user && trends.user.name) || currentUser;
-      $("trendsTitle").textContent = mode === "locations" ? `${owner}'s location trends` : (mode === "yyc" ? `${owner}'s YYC Ground Sort trends` : (mode === "gates" ? `${owner}'s gates trends` : `${owner}'s session trends`));
-      $("allSessionChartTitle").textContent = mode === "locations" ? "Time and misses by locations lab" : (mode === "yyc" ? "Time and misses by Ground Sort run" : (mode === "gates" ? "Time and misses by gates lab" : "Time and misses by session"));
-      $("difficultyTitle").textContent = mode === "locations" ? "Most missed airport locations" : (mode === "yyc" ? "Most missed YYC ground points" : (mode === "gates" ? "Most missed gates" : "Most missed locations"));
-      $("historyTitle").textContent = mode === "locations" ? "Completed locations-lab history" : (mode === "yyc" ? "Completed Ground Sort history" : (mode === "gates" ? "Completed gates history" : "Completed chart history"));
+      $("trendsTitle").textContent = mode === "locations" ? `${owner}'s location trends` : (mode === "yyc" ? `${owner}'s YYC Ground Sort trends` : (mode === "gates" ? `${owner}'s gates trends` : (mode === "apron" ? `${owner}'s Apron Ops trends` : `${owner}'s session trends`)));
+      $("allSessionChartTitle").textContent = mode === "locations" ? "Time and misses by locations lab" : (mode === "yyc" ? "Time and misses by Ground Sort run" : (mode === "gates" ? "Time and misses by gates lab" : (mode === "apron" ? "Time and misses by Apron Ops session" : "Time and misses by session")));
+      $("difficultyTitle").textContent = mode === "locations" ? "Most missed airport locations" : (mode === "yyc" ? "Most missed YYC ground points" : (mode === "gates" ? "Most missed gates" : (mode === "apron" ? "Most missed gates & clearances" : "Most missed locations")));
+      $("historyTitle").textContent = mode === "locations" ? "Completed locations-lab history" : (mode === "yyc" ? "Completed Ground Sort history" : (mode === "gates" ? "Completed gates history" : (mode === "apron" ? "Completed Apron Ops history" : "Completed chart history")));
       renderLifetime(trends.lifetime);
       renderAllSessionsChart($("allSessionsChart"), trends.sessions);
       renderDifficulty(trends.question_stats);
@@ -2272,6 +2624,13 @@
     $("locationsTrendsBtn").addEventListener("click", () => showTrends("locations"));
     $("gatesBtn").addEventListener("click", startOrResumeGates);
     $("gatesTrendsBtn").addEventListener("click", () => showTrends("gates"));
+    $("apronOpsBtn").addEventListener("click", startOrResumeApronOps);
+    $("apronOpsTrendsBtn").addEventListener("click", () => showTrends("apron"));
+    $("apronPauseBtn").addEventListener("click", goHome);
+    $("apronSubmitBtn").addEventListener("click", submitApronClearance);
+    $("apronStudyGuideBtn").addEventListener("click", () => openApronStudyGuide("gates"));
+    $("apronViewRules17Btn").addEventListener("click", () => openApronStudyGuide("rules17"));
+    $("apronViewRules35Btn").addEventListener("click", () => openApronStudyGuide("rules35"));
     $("yycGroundBtn").addEventListener("click", startOrResumeYycGround);
     $("yycGroundValidationBtn").addEventListener("click", () => startOrResumeValidation("yyc"));
     $("yycGroundTrendsBtn").addEventListener("click", () => showTrends("yyc"));
@@ -2311,7 +2670,7 @@
     $("routeEditorSaveBtn").addEventListener("click", saveRouteEditor);
     $("customQuestionLabel").addEventListener("input", updateRouteEditorUI);
 
-    $("playAgainBtn").addEventListener("click", () => activePlayMode === "locations" ? beginLocationsGame() : (activePlayMode === "gates" ? beginGatesGame() : (activePlayMode === "yyc" ? beginYycGroundGame() : beginNewGame())));
+    $("playAgainBtn").addEventListener("click", () => activePlayMode === "locations" ? beginLocationsGame() : (activePlayMode === "gates" ? beginGatesGame() : (activePlayMode === "yyc" ? beginYycGroundGame() : (activePlayMode === "apron" ? beginApronOpsGame() : beginNewGame()))));
     $("endTrendsBtn").addEventListener("click", () => showTrends(activePlayMode));
     $("endHomeBtn").addEventListener("click", goHome);
     $("validatedPracticeBtn").addEventListener("click", () => activeValidationMode === "locations" ? startOrResumeLocations() : (activeValidationMode === "yyc" ? startOrResumeYycGround() : startOrResume()));
@@ -2357,6 +2716,7 @@
       if (state && state.active) navigator.sendBeacon("/api/pause", new Blob([JSON.stringify({ username: currentUser })], headers));
       if (state && state.locations) navigator.sendBeacon("/api/locations/pause", new Blob([JSON.stringify({ username: currentUser })], headers));
       if (state && state.gates) navigator.sendBeacon("/api/gates/pause", new Blob([JSON.stringify({ username: currentUser })], headers));
+      if (state && state.apron_ops) navigator.sendBeacon("/api/apron-ops/pause", new Blob([JSON.stringify({ username: currentUser })], headers));
       if (state && state.yyc_ground) navigator.sendBeacon("/api/yyc-ground/pause", new Blob([JSON.stringify({ username: currentUser })], headers));
       if (state && state.validation) navigator.sendBeacon("/api/validation/pause", new Blob([JSON.stringify({ username: currentUser })], headers));
       if (state && state.locations_validation) navigator.sendBeacon("/api/locations/validation/pause", new Blob([JSON.stringify({ username: currentUser })], headers));

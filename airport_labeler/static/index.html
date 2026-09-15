@@ -216,6 +216,24 @@
             </div>
           </section>
 
+          <section class="apron-ops-strip" aria-labelledby="apronOpsModeTitle">
+            <div class="apron-ops-strip-copy">
+              <span class="apron-ops-orb" aria-hidden="true">✈</span>
+              <div>
+                <p class="eyebrow">APRON CONTROL</p>
+                <h2 id="apronOpsModeTitle">Apron Ops</h2>
+                <p>Manage apron pushback departures and inbound arrivals. Assign pushback parking spots, exit/entry taxiways, and ground frequencies according to CYYC runway rules.</p>
+              </div>
+            </div>
+            <div class="apron-ops-strip-actions">
+              <button class="button button-apron" id="apronOpsBtn" type="button">Start Apron Ops <span aria-hidden="true">→</span></button>
+              <div class="locations-action-row">
+                <button class="button button-secondary" id="apronOpsTrendsBtn" type="button">Apron Ops trends</button>
+              </div>
+              <p id="apronOpsNote">15 clearances ready. Gate locations and runway rules save separately for each user.</p>
+            </div>
+          </section>
+
           <section class="flashcards-strip" aria-labelledby="flashcardsModeTitle">
             <div class="flashcards-strip-copy">
               <span class="flashcards-orb" aria-hidden="true">▤</span>
@@ -341,6 +359,173 @@
                 </button>
               </div>
               <p class="panel-footnote">Hints do not add a miss. Incorrect clicks are returned to the queue.</p>
+            </aside>
+          </div>
+        </section>
+
+        <section class="screen hidden" id="apronOpsScreen" aria-labelledby="apronOpsTitle">
+          <div class="game-topline">
+            <div>
+              <p class="eyebrow" id="apronOpsEyebrow">APRON CONTROL CONSOLE</p>
+              <h1 id="apronOpsTitle">Apron Ops</h1>
+            </div>
+            <div class="game-topline-actions">
+              <div class="timer-readout" title="Active game time">
+                <span class="timer-label">TIME</span>
+                <strong id="apronTimerValue">00:00</strong>
+              </div>
+              <button class="button button-quiet" id="apronPauseBtn" type="button">Save &amp; menu</button>
+            </div>
+          </div>
+
+          <div class="apron-layout">
+            <div class="apron-map-column">
+              <div class="map-frame apron-map-frame" id="apronMapFrame">
+                <img
+                  id="apronMap"
+                  src="/assets/Gates.png"
+                  width="1377"
+                  height="857"
+                  alt="Gates reference diagram showing gate locations"
+                  draggable="false"
+                />
+                <svg
+                  id="apronMapOverlay"
+                  viewBox="0 0 1377 857"
+                  preserveAspectRatio="none"
+                  aria-label="CYYC Apron Gates diagram"
+                >
+                  <g id="apronHighlightLayer"></g>
+                </svg>
+                <div class="map-corner-label map-corner-north">N</div>
+                <div class="map-instruction" id="apronMapInstruction">Gates diagram (Gates.png)</div>
+              </div>
+              <div class="apron-map-actions">
+                <button class="button button-secondary" id="apronStudyGuideBtn" type="button">
+                  <span aria-hidden="true">▧</span> Study guide (Gates &amp; Rules)
+                </button>
+                <button class="button button-secondary" id="apronViewRules17Btn" type="button">
+                  <span aria-hidden="true">📋</span> Rules 17L/17R
+                </button>
+                <button class="button button-secondary" id="apronViewRules35Btn" type="button">
+                  <span aria-hidden="true">📋</span> Rules 35L/35R
+                </button>
+              </div>
+              <p class="map-caption" id="apronMapCaption">
+                Reference diagram showing CYYC concourses and gates 1-97. Use the study guide to inspect pushback and taxiway rules.
+              </p>
+            </div>
+
+            <aside class="apron-control-panel" aria-live="polite">
+              <div class="progress-wrap">
+                <div class="progress-meta">
+                  <span id="apronProgressText">0 of 15 clearances issued</span>
+                  <span id="apronRemainingText">15 in queue</span>
+                </div>
+                <div class="progress-track" aria-hidden="true"><span id="apronProgressFill"></span></div>
+              </div>
+
+              <!-- Flight Request Strip -->
+              <div class="flight-strip-card" id="flightStripCard">
+                <div class="flight-strip-top">
+                  <span class="flight-type-pill departure" id="apronTypePill">DEPARTURE</span>
+                  <span class="flight-callsign" id="apronCallsign">WestJet 224</span>
+                  <span class="flight-aircraft" id="apronAircraft">B738</span>
+                </div>
+                <div class="flight-strip-meta">
+                  <div class="flight-meta-item">
+                    <span class="meta-label">GATE</span>
+                    <strong class="meta-val" id="apronGate">Gate 14</strong>
+                    <span class="meta-sub" id="apronConcourse">Concourse A</span>
+                  </div>
+                  <div class="flight-meta-item">
+                    <span class="meta-label">RUNWAY</span>
+                    <strong class="meta-val highlight-val" id="apronRunway">17R</strong>
+                  </div>
+                  <div class="flight-meta-item">
+                    <span class="meta-label">OPERATION</span>
+                    <strong class="meta-val" id="apronOperation">Pushback (Exit Apron)</strong>
+                  </div>
+                </div>
+                <div class="radio-transmission-box">
+                  <span class="radio-mic-icon" aria-hidden="true">🎙</span>
+                  <p class="radio-text" id="apronTransmission">
+                    "Calgary Apron, WestJet 224 at Gate 14, ready for pushback, departing Runway 17R."
+                  </p>
+                </div>
+              </div>
+
+              <!-- Clearance Form Card -->
+              <div class="apron-instruction-card">
+                <p class="instruction-heading">ISSUE CLEARANCE INSTRUCTION</p>
+
+                <!-- Departure Controls -->
+                <div class="instruction-section" id="departureControls">
+                  <label class="control-label" id="spotLabel">1. ASSIGN PUSHBACK SPOT</label>
+                  <div class="selector-pills-grid" id="spotPills" role="radiogroup" aria-labelledby="spotLabel">
+                    <!-- Spot buttons generated in JS -->
+                  </div>
+
+                  <label class="control-label" id="exitTaxiwayLabel">2. ASSIGN EXIT TAXIWAY</label>
+                  <div class="selector-pills-grid" id="exitTaxiwayPills" role="radiogroup" aria-labelledby="exitTaxiwayLabel">
+                    <!-- Taxiway buttons generated in JS -->
+                  </div>
+
+                  <label class="control-label" id="groundFreqLabel">3. CONTACT GROUND FREQUENCY</label>
+                  <div class="selector-pills-row" id="groundFreqPills" role="radiogroup" aria-labelledby="groundFreqLabel">
+                    <!-- Ground buttons generated in JS -->
+                  </div>
+                </div>
+
+                <!-- Arrival Controls -->
+                <div class="instruction-section hidden" id="arrivalControls">
+                  <label class="control-label" id="entryTaxiwayLabel">1. ASSIGN ENTRY TAXIWAY TO APRON</label>
+                  <div class="selector-pills-grid" id="entryTaxiwayPills" role="radiogroup" aria-labelledby="entryTaxiwayLabel">
+                    <!-- Taxiway buttons generated in JS -->
+                  </div>
+                </div>
+
+                <!-- Clearance Preview -->
+                <div class="clearance-readout" id="clearanceReadout">
+                  <span class="readout-label">TRANSMISSION DRAFT:</span>
+                  <span id="clearancePreviewText">Select options above to formulate clearance.</span>
+                </div>
+
+                <div class="clearance-submit-row">
+                  <button class="button button-primary button-large" id="apronSubmitBtn" type="button" disabled>
+                    Issue Clearance <span aria-hidden="true">→</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Feedback Card -->
+              <div class="apron-feedback-card hidden" id="apronFeedbackCard" aria-live="polite">
+                <div class="feedback-status" id="apronFeedbackStatus">
+                  <span class="feedback-icon" id="apronFeedbackIcon">✓</span>
+                  <strong id="apronFeedbackTitle">Clearance Correct</strong>
+                </div>
+                <p class="feedback-detail" id="apronFeedbackDetail"></p>
+                <div class="feedback-breakdown" id="apronFeedbackBreakdown"></div>
+                <div class="feedback-actions">
+                  <button class="button button-primary" id="apronNextBtn" type="button">Next Clearance <span aria-hidden="true">→</span></button>
+                </div>
+              </div>
+
+              <!-- Score Summary Row -->
+              <div class="score-row">
+                <div class="score-item">
+                  <span>ATTEMPTS</span>
+                  <strong id="apronAttemptsValue">0</strong>
+                </div>
+                <div class="score-item">
+                  <span>MISSES</span>
+                  <strong id="apronMissesValue">0</strong>
+                </div>
+                <div class="score-item">
+                  <span>ACCURACY</span>
+                  <strong id="apronAccuracyValue">—</strong>
+                </div>
+              </div>
             </aside>
           </div>
         </section>
@@ -737,6 +922,11 @@
             <h2 id="referenceTitle">Labelled airport chart</h2>
           </div>
           <button class="icon-button" id="closeReferenceBtn" type="button" aria-label="Close labelled chart">×</button>
+        </div>
+                <div class="reference-tabs hidden" id="referenceTabs">
+          <button class="ref-tab-button active" id="refTabGates" type="button">Gates Diagram (Gates.png)</button>
+          <button class="ref-tab-button" id="refTabRules17" type="button">Runway 17L/17R Rules</button>
+          <button class="ref-tab-button" id="refTabRules35" type="button">Runway 35L/35R Rules</button>
         </div>
         <p class="modal-copy" id="referenceCopy">Use the supplied labelled chart to orient yourself. Close it, then place the requested label on the blank chart.</p>
         <div class="reference-image-wrap">

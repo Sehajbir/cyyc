@@ -793,3 +793,349 @@ tbody tr:last-child td { border-bottom: 0; }
   .modal { padding: 10px; }
   .modal-card { max-height: calc(100vh - 20px); padding: 17px; }
 }
+
+/* Apron Ops Mode Strip */
+.apron-ops-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  margin-top: 18px;
+  padding: 23px 24px;
+  border: 1px solid #b8d2ea;
+  border-radius: var(--radius-lg);
+  background: radial-gradient(circle at 88% 18%, rgba(14, 116, 144, .14), transparent 16rem), rgba(242, 248, 253, .85);
+}
+.apron-ops-strip-copy { display: flex; align-items: flex-start; gap: 14px; max-width: 760px; }
+.apron-ops-orb { display: grid; flex: 0 0 auto; width: 35px; height: 35px; place-items: center; color: #0369a1; border: 1px solid #7dd3fc; border-radius: 50%; background: #e0f2fe; font-size: 18px; font-weight: 800; }
+.apron-ops-strip .eyebrow { margin-bottom: 4px; color: #0284c7; }
+.apron-ops-strip h2 { margin: 0 0 5px; color: #0c4a6e; font-size: 18px; }
+.apron-ops-strip p:not(.eyebrow) { margin: 0; color: #475569; font-size: 12px; line-height: 1.5; }
+.apron-ops-strip-actions { display: grid; flex: 0 0 min(340px, 36%); gap: 8px; justify-items: start; }
+.apron-ops-strip-actions > p { color: #64748b; font-size: 10px !important; }
+.button-apron { color: white; border-color: #0369a1; background: linear-gradient(135deg, #0284c7, #0ea5e9); box-shadow: 0 9px 18px rgba(2, 132, 199, .2); }
+.button-apron:hover { color: white; border-color: #075985; background: linear-gradient(135deg, #0369a1, #0284c7); }
+
+/* Apron Ops Game Layout */
+.apron-layout {
+  display: grid;
+  grid-template-columns: minmax(420px, 1.25fr) minmax(360px, 1fr);
+  gap: 28px;
+  align-items: start;
+  margin-top: 20px;
+}
+.apron-map-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.apron-map-frame {
+  max-width: 980px;
+  aspect-ratio: 1377 / 857;
+  position: relative;
+}
+.apron-map-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.apron-gate-beacon {
+  fill: rgba(14, 165, 233, 0.45);
+  stroke: #0284c7;
+  stroke-width: 3.5;
+}
+.apron-gate-pulse {
+  fill: none;
+  stroke: #38bdf8;
+  stroke-width: 2.5;
+  animation: apron-beacon-pulse 1.8s infinite ease-out;
+}
+@keyframes apron-beacon-pulse {
+  0% { r: 16; opacity: 1; stroke-width: 3; }
+  50% { opacity: 0.8; }
+  100% { r: 44; opacity: 0; stroke-width: 1; }
+}
+
+/* Flight Request Strip */
+.flight-strip-card {
+  padding: 18px 20px;
+  border-radius: var(--radius-md);
+  background: #0f172a;
+  color: #f8fafc;
+  border: 1px solid #1e293b;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.22);
+  margin-bottom: 16px;
+}
+.flight-strip-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.flight-type-pill {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+.flight-type-pill.departure {
+  background: #f97316;
+  color: #ffffff;
+}
+.flight-type-pill.arrival {
+  background: #0ea5e9;
+  color: #ffffff;
+}
+.flight-callsign {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #f8fafc;
+}
+.flight-aircraft {
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  background: #1e293b;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.flight-strip-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(30, 41, 59, 0.7);
+  border-radius: 8px;
+  margin-bottom: 14px;
+}
+.flight-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.flight-meta-item .meta-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  text-transform: uppercase;
+}
+.flight-meta-item .meta-val {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+.flight-meta-item .meta-val.highlight-val {
+  color: #38bdf8;
+}
+.flight-meta-item .meta-sub {
+  font-size: 10px;
+  color: #94a3b8;
+}
+.radio-transmission-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #1e293b;
+  border-left: 3px solid #38bdf8;
+  border-radius: 6px;
+}
+.radio-mic-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.radio-text {
+  font-size: 13px;
+  font-style: italic;
+  line-height: 1.45;
+  color: #cbd5e1;
+  margin: 0;
+}
+
+/* Apron Instruction Card */
+.apron-instruction-card {
+  padding: 20px;
+  border-radius: var(--radius-md);
+  background: var(--surface-card, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+  margin-bottom: 16px;
+}
+.instruction-heading {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #0369a1;
+  margin: 0 0 14px;
+  text-transform: uppercase;
+}
+.control-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #334155;
+  margin: 12px 0 6px;
+  text-transform: uppercase;
+}
+.control-label:first-child {
+  margin-top: 0;
+}
+.selector-pills-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.selector-pills-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.selector-pill {
+  padding: 7px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.selector-pill:hover {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+.selector-pill.selected {
+  background: #0284c7;
+  border-color: #0369a1;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 4px 10px rgba(2, 132, 199, 0.28);
+}
+.clearance-readout {
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  margin: 14px 0 16px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #1e293b;
+}
+.clearance-readout .readout-label {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: #64748b;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.clearance-submit-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Feedback Card */
+.apron-feedback-card {
+  padding: 16px 20px;
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+  border: 1px solid transparent;
+}
+.apron-feedback-card.correct {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #065f46;
+}
+.apron-feedback-card.incorrect {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #9f1239;
+}
+.feedback-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+.feedback-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 14px;
+}
+.apron-feedback-card.correct .feedback-icon {
+  background: #10b981;
+  color: white;
+}
+.apron-feedback-card.incorrect .feedback-icon {
+  background: #f43f5e;
+  color: white;
+}
+.feedback-detail {
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0 0 10px;
+}
+.feedback-breakdown {
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+.feedback-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Reference Modal Tabs */
+.reference-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.ref-tab-button {
+  padding: 7px 15px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ref-tab-button:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+.ref-tab-button.active {
+  background: #0284c7;
+  border-color: #0369a1;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .apron-layout { grid-template-columns: 1fr; }
+  .flight-strip-meta { grid-template-columns: 1fr; gap: 6px; }
+  .apron-ops-strip { align-items: flex-start; flex-direction: column; gap: 17px; }
+  .apron-ops-strip-actions { width: 100%; justify-items: start; }
+}
