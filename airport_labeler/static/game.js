@@ -45,6 +45,20 @@
       answerPath: "/api/yyc-ground/answer-point",
       hintPath: "/api/yyc-ground/hint",
     },
+    gates: {
+      key: "gates",
+      canvas: { width: 1377, height: 857 },
+      image: "/assets/gates_blank.png",
+      referenceImage: "/assets/gates_labelled.png",
+      referenceTitle: "Labelled gates chart",
+      referenceCopy: "Study the labelled gates chart, then find the named gate among the empty blue bubbles.",
+      eyebrow: "GATE IDENTIFICATION",
+      title: "Identify the Gates",
+      mapCaption: "Click the empty blue bubble for the named gate. Correct clicks briefly show the gate name, then return to empty placeholders.",
+      instruction: "Click the gate bubble",
+      answerPath: "/api/gates/answer",
+      hintPath: "/api/gates/hint",
+    },
   };
   const VALIDATION_MODES = {
     main: {
@@ -269,7 +283,14 @@
     airportMap.width = config.canvas.width;
     airportMap.height = config.canvas.height;
     $("mapFrame").style.aspectRatio = `${config.canvas.width} / ${config.canvas.height}`;
-    $("mapFrame").style.maxWidth = config.key === "main" ? "690px" : "610px";
+    if (config.key === "gates") {
+      $("mapFrame").style.maxWidth = "980px";
+    } else if (config.key === "main") {
+      $("mapFrame").style.maxWidth = "690px";
+    } else {
+      $("mapFrame").style.maxWidth = "610px";
+    }
+    document.querySelector(".game-layout")?.classList.toggle("gates-mode", config.key === "gates");
     mapOverlay.setAttribute("viewBox", `0 0 ${config.canvas.width} ${config.canvas.height}`);
     $("gameEyebrow").textContent = config.eyebrow;
     $("gameTitle").textContent = config.title;
@@ -418,6 +439,7 @@
     const active = state && state.active;
     const locations = state && state.locations;
     const yycGround = state && state.yyc_ground;
+    const gates = state && state.gates;
     const validation = state && state.validation;
     const locationsValidation = state && state.locations_validation;
     const yycGroundValidation = state && state.yyc_ground_validation;
@@ -428,6 +450,8 @@
       status.innerHTML = '<span class="status-dot"></span> Locations validation saving';
     } else if (validation && validation.is_running) {
       status.innerHTML = '<span class="status-dot"></span> Validation saving';
+    } else if (gates && gates.is_running) {
+      status.innerHTML = '<span class="status-dot"></span> Gates progress saving';
     } else if (yycGround && yycGround.is_running) {
       status.innerHTML = '<span class="status-dot"></span> YYC Ground Sort saving';
     } else if (locations && locations.is_running) {
@@ -438,6 +462,8 @@
       status.innerHTML = '<span class="status-dot"></span> YYC validation draft saved';
     } else if (locationsValidation) {
       status.innerHTML = '<span class="status-dot"></span> Locations validation draft saved';
+    } else if (gates) {
+      status.innerHTML = '<span class="status-dot"></span> Gates progress saved';
     } else if (yycGround) {
       status.innerHTML = '<span class="status-dot"></span> YYC Ground Sort saved';
     } else if (validation) {
@@ -538,6 +564,25 @@
     yycValidationButton.textContent = yycValidation
       ? (yycValidation.phase === "add_questions" ? "Finish YYC validation" : `Resume validation (${yycValidation.reviewed_count}/${yycValidation.question_total})`)
       : "Validate ground points";
+
+    const gates = state.gates;
+    const gatesBtn = $("gatesBtn");
+    const gatesNote = $("gatesNote");
+    const gatesTotal = state.gates_question_total || 0;
+    if (gates) {
+      gatesBtn.innerHTML = 'Resume gates lab <span aria-hidden="true">→</span>';
+      gatesNote.replaceChildren();
+      gatesNote.append(document.createTextNode(`${gates.completed_count} of ${gates.question_total} gates identified · ${formatCompactDuration(gates.elapsed_seconds)} recorded. `));
+      const discard = document.createElement("button");
+      discard.type = "button";
+      discard.className = "text-button";
+      discard.textContent = "Discard and restart";
+      discard.addEventListener("click", replaceGatesGame);
+      gatesNote.append(discard);
+    } else {
+      gatesBtn.innerHTML = 'Start gates lab <span aria-hidden="true">→</span>';
+      gatesNote.textContent = history.gates_session_count ? `${gatesTotal} gates are ready for another identification run.` : `${gatesTotal} gates are ready to learn from the blank diagram.`;
+    }
 
     const deckCount = history.flashcard_deck_count || 0;
     $("flashcardsBtn").innerHTML = deckCount ? `Open ${deckCount} flashcard ${deckCount === 1 ? "deck" : "decks"} <span aria-hidden="true">→</span>` : 'Open flashcard decks <span aria-hidden="true">→</span>';
@@ -717,6 +762,7 @@
     if (!fromState) return null;
     if (mode === "locations") return fromState.locations;
     if (mode === "yyc") return fromState.yyc_ground;
+    if (mode === "gates") return fromState.gates;
     return fromState.active;
   }
 
@@ -727,6 +773,7 @@
     }
     const config = configureGameMode(mode);
     const isYyc = mode === "yyc";
+    const isGates = mode === "gates";
     const awaitingUse = isYyc && active.phase === "use";
     closeReference();
     clearHint();
@@ -744,15 +791,20 @@
     $("accuracyValue").textContent = active.attempts
       ? `${Math.round(((active.attempts - active.incorrect) / active.attempts) * 100)}%`
       : "—";
-    const noun = mode === "locations" ? "location" : (isYyc ? "ground point" : "route");
+    const noun = mode === "locations" ? "location" : (isYyc ? "ground point" : (isGates ? "gate" : "route"));
     mapOverlay.setAttribute("aria-label", awaitingUse ? `YYC Ground Sort. Answer who can use ${active.current.label}.` : `Airport diagram. Locate ${active.current.label}; click the ${noun}.`);
     $("mapInstruction").textContent = awaitingUse ? "Answer the follow-up question" : `Click ${active.current.label}`;
     $("groundFollowup").classList.toggle("hidden", !awaitingUse);
     if (awaitingUse) $("groundFollowupPoint").textContent = active.current.label;
-    renderPlacements(active.placements);
+    if (isGates) {
+      // Gates canvas stays blank; do not show persistent placements
+      placementLayer.innerHTML = "";
+    } else {
+      renderPlacements(active.placements);
+    }
     setAnswerStatus("neutral", awaitingUse
       ? "Point identified — choose who can use it."
-      : (mode === "locations" ? "Choose the matching marker or facility on the chart." : (isYyc ? "First identify the named YYC ground point." : "Choose a spot on the chart.")));
+      : (mode === "locations" ? "Choose the matching marker or facility on the chart." : (isYyc ? "First identify the named YYC ground point." : (isGates ? "Click where the named gate is on the blank diagram." : "Choose a spot on the chart."))));
     if (awaitingUse) {
       answerLocked = false;
       mapOverlay.style.pointerEvents = "none";
@@ -790,7 +842,15 @@
       setAnswerStatus(result.correct ? "correct" : "incorrect", result.feedback);
       state = result.state;
       const nextActive = activeGameFor(activePlayMode, state);
-      if (result.correct && nextActive && !(activePlayMode === "yyc" && nextActive.phase === "use")) renderPlacements(nextActive.placements);
+      if (result.correct && nextActive && !(activePlayMode === "yyc" && nextActive.phase === "use")) {
+        if (activePlayMode === "gates") {
+          // For gates, briefly show correct marker then remove leaving blank
+          renderPlacements([ { label: result.question.label, category: "Gate", x: result.clicked.x, y: result.clicked.y } ]);
+          window.setTimeout(() => { placementLayer.innerHTML = ""; }, 900);
+        } else {
+          renderPlacements(nextActive.placements);
+        }
+      }
       setSavedStatus();
       if (result.follow_up) {
         window.setTimeout(() => renderGame(nextActive, activePlayMode), 650);
@@ -799,7 +859,7 @@
         stopTimer();
         window.setTimeout(() => renderCompletion(result.summary, activePlayMode), 930);
       } else {
-        window.setTimeout(() => renderGame(nextActive, activePlayMode), result.correct ? 780 : 1120);
+        window.setTimeout(() => renderGame(nextActive, activePlayMode), result.correct ? (activePlayMode === "gates" ? 1100 : 780) : 1120);
       }
     } catch (error) {
       setMapLocked(false);
@@ -1458,6 +1518,38 @@
     }
   }
 
+  async function beginGatesGame() {
+    try {
+      state = await request("/api/gates/new", "POST", {});
+      renderGame(state.gates, "gates");
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  async function replaceGatesGame() {
+    if (!window.confirm("Discard the saved gates identification run? Completed gates trends will remain.")) return;
+    try {
+      state = await request("/api/gates/new", "POST", { replace_active: true });
+      renderGame(state.gates, "gates");
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  async function startOrResumeGates() {
+    if (state && state.gates) {
+      try {
+        state = await request("/api/gates/resume", "POST", {});
+        renderGame(state.gates, "gates");
+      } catch (error) {
+        showToast(error.message, "error");
+      }
+    } else {
+      await beginGatesGame();
+    }
+  }
+
   async function beginYycGroundGame() {
     try {
       state = await request("/api/yyc-ground/new", "POST", {});
@@ -1495,6 +1587,7 @@
     if (state.active && state.active.is_running) state = await request("/api/pause", "POST", {});
     if (state.locations && state.locations.is_running) state = await request("/api/locations/pause", "POST", {});
     if (state.yyc_ground && state.yyc_ground.is_running) state = await request("/api/yyc-ground/pause", "POST", {});
+    if (state.gates && state.gates.is_running) state = await request("/api/gates/pause", "POST", {});
     if (state.validation && state.validation.is_running) state = await request("/api/validation/pause", "POST", {});
     if (state.locations_validation && state.locations_validation.is_running) state = await request("/api/locations/validation/pause", "POST", {});
     if (state.yyc_ground_validation && state.yyc_ground_validation.is_running) state = await request("/api/yyc-ground/validation/pause", "POST", {});
@@ -1531,15 +1624,16 @@
     lastSummary = summary;
     const isLocations = mode === "locations";
     const isYyc = mode === "yyc";
+    const isGates = mode === "gates";
     const wrongQuestionIds = new Set((summary.events || []).filter((event) => !event.correct).map((event) => event.question_id));
     const firstPass = Math.max(0, summary.question_total - wrongQuestionIds.size);
-    $("endTitle").innerHTML = isYyc ? "Every ground point<br /><em>sorted.</em>" : (isLocations ? "Every marker<br /><em>accounted for.</em>" : "Every route<br /><em>accounted for.</em>");
-    $("endIntro").textContent = `Completed on ${formatDate(summary.finished_at)}. This ${isYyc ? "YYC Ground Sort" : (isLocations ? "locations-lab" : "chart")} result is now part of your saved trend history.`;
+    $("endTitle").innerHTML = isYyc ? "Every ground point<br /><em>sorted.</em>" : (isGates ? "Every gate<br /><em>identified.</em>" : (isLocations ? "Every marker<br /><em>accounted for.</em>" : "Every route<br /><em>accounted for.</em>"));
+    $("endIntro").textContent = `Completed on ${formatDate(summary.finished_at)}. This ${isYyc ? "YYC Ground Sort" : (isGates ? "gates-lab" : (isLocations ? "locations-lab" : "chart"))} result is now part of your saved trend history.`;
     $("summaryGrid").innerHTML = [
-      summaryCard("TOTAL TIME", formatDuration(summary.duration_seconds), isYyc ? "Active Ground Sort time" : (isLocations ? "Active locations-lab time" : "Active chart time")),
+      summaryCard("TOTAL TIME", formatDuration(summary.duration_seconds), isYyc ? "Active Ground Sort time" : (isGates ? "Active gates-lab time" : (isLocations ? "Active locations-lab time" : "Active chart time"))),
       summaryCard(isYyc ? "INCORRECT RESPONSES" : "INCORRECT CLICKS", String(summary.incorrect), summary.incorrect === 1 ? "One retry was needed" : "Retries returned to queue"),
-      summaryCard("ATTEMPTS", String(summary.attempts), `${summary.question_total} ${isYyc ? "points sorted" : (isLocations ? "markers" : "labels")} solved`),
-      summaryCard(isYyc ? "FIRST-PASS POINTS" : (isLocations ? "FIRST-PASS MARKERS" : "FIRST-PASS LABELS"), String(firstPass), `${summary.accuracy}% answer accuracy`),
+      summaryCard("ATTEMPTS", String(summary.attempts), `${summary.question_total} ${isYyc ? "points sorted" : (isGates ? "gates" : (isLocations ? "markers" : "labels"))} solved`),
+      summaryCard(isYyc ? "FIRST-PASS POINTS" : (isGates ? "FIRST-PASS GATES" : (isLocations ? "FIRST-PASS MARKERS" : "FIRST-PASS LABELS")), String(firstPass), `${summary.accuracy}% answer accuracy`),
     ].join("");
     $("sessionChartTitle").textContent = isLocations ? "Incorrect-marker trend" : "Incorrect-answer trend";
     renderSessionTrend($("sessionChart"), summary);
@@ -1720,13 +1814,13 @@
     stopTimer();
     try {
       await pauseOpenSessions();
-      const trendsPath = mode === "locations" ? "/api/locations/trends" : (mode === "yyc" ? "/api/yyc-ground/trends" : "/api/trends");
+      const trendsPath = mode === "locations" ? "/api/locations/trends" : (mode === "yyc" ? "/api/yyc-ground/trends" : (mode === "gates" ? "/api/gates/trends" : "/api/trends"));
       const trends = await request(trendsPath);
       const owner = (trends.user && trends.user.name) || currentUser;
-      $("trendsTitle").textContent = mode === "locations" ? `${owner}'s location trends` : (mode === "yyc" ? `${owner}'s YYC Ground Sort trends` : `${owner}'s session trends`);
-      $("allSessionChartTitle").textContent = mode === "locations" ? "Time and misses by locations lab" : (mode === "yyc" ? "Time and misses by Ground Sort run" : "Time and misses by session");
-      $("difficultyTitle").textContent = mode === "locations" ? "Most missed airport locations" : (mode === "yyc" ? "Most missed YYC ground points" : "Most missed locations");
-      $("historyTitle").textContent = mode === "locations" ? "Completed locations-lab history" : (mode === "yyc" ? "Completed Ground Sort history" : "Completed chart history");
+      $("trendsTitle").textContent = mode === "locations" ? `${owner}'s location trends` : (mode === "yyc" ? `${owner}'s YYC Ground Sort trends` : (mode === "gates" ? `${owner}'s gates trends` : `${owner}'s session trends`));
+      $("allSessionChartTitle").textContent = mode === "locations" ? "Time and misses by locations lab" : (mode === "yyc" ? "Time and misses by Ground Sort run" : (mode === "gates" ? "Time and misses by gates lab" : "Time and misses by session"));
+      $("difficultyTitle").textContent = mode === "locations" ? "Most missed airport locations" : (mode === "yyc" ? "Most missed YYC ground points" : (mode === "gates" ? "Most missed gates" : "Most missed locations"));
+      $("historyTitle").textContent = mode === "locations" ? "Completed locations-lab history" : (mode === "yyc" ? "Completed Ground Sort history" : (mode === "gates" ? "Completed gates history" : "Completed chart history"));
       renderLifetime(trends.lifetime);
       renderAllSessionsChart($("allSessionsChart"), trends.sessions);
       renderDifficulty(trends.question_stats);
@@ -2176,6 +2270,8 @@
     $("locationsBtn").addEventListener("click", startOrResumeLocations);
     $("locationsValidationBtn").addEventListener("click", () => startOrResumeValidation("locations"));
     $("locationsTrendsBtn").addEventListener("click", () => showTrends("locations"));
+    $("gatesBtn").addEventListener("click", startOrResumeGates);
+    $("gatesTrendsBtn").addEventListener("click", () => showTrends("gates"));
     $("yycGroundBtn").addEventListener("click", startOrResumeYycGround);
     $("yycGroundValidationBtn").addEventListener("click", () => startOrResumeValidation("yyc"));
     $("yycGroundTrendsBtn").addEventListener("click", () => showTrends("yyc"));
@@ -2215,7 +2311,7 @@
     $("routeEditorSaveBtn").addEventListener("click", saveRouteEditor);
     $("customQuestionLabel").addEventListener("input", updateRouteEditorUI);
 
-    $("playAgainBtn").addEventListener("click", () => activePlayMode === "locations" ? beginLocationsGame() : (activePlayMode === "yyc" ? beginYycGroundGame() : beginNewGame()));
+    $("playAgainBtn").addEventListener("click", () => activePlayMode === "locations" ? beginLocationsGame() : (activePlayMode === "gates" ? beginGatesGame() : (activePlayMode === "yyc" ? beginYycGroundGame() : beginNewGame())));
     $("endTrendsBtn").addEventListener("click", () => showTrends(activePlayMode));
     $("endHomeBtn").addEventListener("click", goHome);
     $("validatedPracticeBtn").addEventListener("click", () => activeValidationMode === "locations" ? startOrResumeLocations() : (activeValidationMode === "yyc" ? startOrResumeYycGround() : startOrResume()));
@@ -2260,6 +2356,7 @@
       // username in their JSON body during page shutdown.
       if (state && state.active) navigator.sendBeacon("/api/pause", new Blob([JSON.stringify({ username: currentUser })], headers));
       if (state && state.locations) navigator.sendBeacon("/api/locations/pause", new Blob([JSON.stringify({ username: currentUser })], headers));
+      if (state && state.gates) navigator.sendBeacon("/api/gates/pause", new Blob([JSON.stringify({ username: currentUser })], headers));
       if (state && state.yyc_ground) navigator.sendBeacon("/api/yyc-ground/pause", new Blob([JSON.stringify({ username: currentUser })], headers));
       if (state && state.validation) navigator.sendBeacon("/api/validation/pause", new Blob([JSON.stringify({ username: currentUser })], headers));
       if (state && state.locations_validation) navigator.sendBeacon("/api/locations/validation/pause", new Blob([JSON.stringify({ username: currentUser })], headers));
