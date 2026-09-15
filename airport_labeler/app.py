@@ -33,6 +33,7 @@ from urllib.parse import unquote, urlparse
 from game_data import CANVAS_HEIGHT, CANVAS_WIDTH, QUESTION_BANK
 from locations_data import LOCATIONS_CANVAS_HEIGHT, LOCATIONS_CANVAS_WIDTH, LOCATION_QUESTION_BANK
 from yyc_ground_data import YYC_GROUND_CANVAS_HEIGHT, YYC_GROUND_CANVAS_WIDTH, YYC_GROUND_QUESTION_BANK
+from gates_data import GATES_CANVAS_HEIGHT, GATES_CANVAS_WIDTH, GATES_QUESTION_BANK
 
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
@@ -183,21 +184,25 @@ class GameStore:
             "active_game": None,
             "active_locations_game": None,
             "active_yyc_ground_game": None,
+            "active_gates_game": None,
             "active_validation": None,
             "active_locations_validation": None,
             "active_yyc_ground_validation": None,
             "sessions": [],
             "location_sessions": [],
             "yyc_ground_sessions": [],
+            "gates_sessions": [],
             "validation_sessions": [],
             "locations_validation_sessions": [],
             "yyc_ground_validation_sessions": [],
             "question_stats": {},
             "location_question_stats": {},
             "yyc_ground_question_stats": {},
+            "gates_question_stats": {},
             "last_completed": None,
             "last_locations_completed": None,
             "last_yyc_ground_completed": None,
+            "last_gates_completed": None,
             "last_validation": None,
             "last_locations_validation": None,
             "last_yyc_ground_validation": None,
@@ -207,7 +212,7 @@ class GameStore:
     @staticmethod
     def _empty_memory() -> dict[str, Any]:
         return {
-            "schema_version": 10,
+            "schema_version": 11,
             # Profiles hold user-specific game progress, trends, and validation
             # drafts. The bank configuration below is shared by every user.
             "users": {},
@@ -229,12 +234,12 @@ class GameStore:
     @staticmethod
     def _legacy_has_user_data(loaded: dict[str, Any]) -> bool:
         keys = (
-            "active_game", "active_locations_game", "active_yyc_ground_game",
+            "active_game", "active_locations_game", "active_yyc_ground_game", "active_gates_game",
             "active_validation", "active_locations_validation", "active_yyc_ground_validation",
-            "sessions", "location_sessions", "yyc_ground_sessions",
+            "sessions", "location_sessions", "yyc_ground_sessions", "gates_sessions",
             "validation_sessions", "locations_validation_sessions", "yyc_ground_validation_sessions",
-            "question_stats", "location_question_stats", "yyc_ground_question_stats",
-            "last_completed", "last_locations_completed", "last_yyc_ground_completed",
+            "question_stats", "location_question_stats", "yyc_ground_question_stats", "gates_question_stats",
+            "last_completed", "last_locations_completed", "last_yyc_ground_completed", "last_gates_completed",
             "last_validation", "last_locations_validation", "last_yyc_ground_validation", "flashcard_decks",
         )
         for key in keys:
@@ -246,12 +251,12 @@ class GameStore:
     def _legacy_profile(self, loaded: dict[str, Any]) -> dict[str, Any]:
         profile = self._empty_profile("Guest")
         for key in (
-            "active_game", "active_locations_game", "active_yyc_ground_game",
+            "active_game", "active_locations_game", "active_yyc_ground_game", "active_gates_game",
             "active_validation", "active_locations_validation", "active_yyc_ground_validation",
-            "sessions", "location_sessions", "yyc_ground_sessions",
+            "sessions", "location_sessions", "yyc_ground_sessions", "gates_sessions",
             "validation_sessions", "locations_validation_sessions", "yyc_ground_validation_sessions",
-            "question_stats", "location_question_stats", "yyc_ground_question_stats",
-            "last_completed", "last_locations_completed", "last_yyc_ground_completed",
+            "question_stats", "location_question_stats", "yyc_ground_question_stats", "gates_question_stats",
+            "last_completed", "last_locations_completed", "last_yyc_ground_completed", "last_gates_completed",
             "last_validation", "last_locations_validation", "last_yyc_ground_validation", "flashcard_decks",
         ):
             if key in loaded:
@@ -273,10 +278,10 @@ class GameStore:
             if key in raw:
                 profile[key] = deepcopy(raw[key])
         profile["display_name"] = display_name
-        for list_key in ("sessions", "location_sessions", "yyc_ground_sessions", "validation_sessions", "locations_validation_sessions", "yyc_ground_validation_sessions", "flashcard_decks"):
+        for list_key in ("sessions", "location_sessions", "yyc_ground_sessions", "gates_sessions", "validation_sessions", "locations_validation_sessions", "yyc_ground_validation_sessions", "flashcard_decks"):
             if not isinstance(profile[list_key], list):
                 profile[list_key] = []
-        for dict_key in ("question_stats", "location_question_stats", "yyc_ground_question_stats"):
+        for dict_key in ("question_stats", "location_question_stats", "yyc_ground_question_stats", "gates_question_stats"):
             if not isinstance(profile[dict_key], dict):
                 profile[dict_key] = {}
         if profile["active_game"] is not None and not isinstance(profile["active_game"], dict):
@@ -285,6 +290,8 @@ class GameStore:
             profile["active_locations_game"] = None
         if profile["active_yyc_ground_game"] is not None and not isinstance(profile["active_yyc_ground_game"], dict):
             profile["active_yyc_ground_game"] = None
+        if profile["active_gates_game"] is not None and not isinstance(profile["active_gates_game"], dict):
+            profile["active_gates_game"] = None
         if profile["active_validation"] is not None and not isinstance(profile["active_validation"], dict):
             profile["active_validation"] = None
         if profile["active_locations_validation"] is not None and not isinstance(profile["active_locations_validation"], dict):
@@ -297,6 +304,8 @@ class GameStore:
             profile["active_locations_game"]["running_since"] = None
         if profile["active_yyc_ground_game"]:
             profile["active_yyc_ground_game"]["running_since"] = None
+        if profile["active_gates_game"]:
+            profile["active_gates_game"]["running_since"] = None
         if profile["active_validation"]:
             profile["active_validation"]["running_since"] = None
             profile["active_validation"].setdefault("phase", "review")
@@ -375,7 +384,7 @@ class GameStore:
                 # retain the first profile rather than merging unrelated histories.
                 memory["users"].setdefault(key, profile)
 
-        memory["schema_version"] = 10
+        memory["schema_version"] = 11
         if not isinstance(memory["route_overrides"], dict):
             memory["route_overrides"] = {}
         if not isinstance(memory["question_overrides"], dict):
@@ -511,6 +520,13 @@ class GameStore:
         validation = profile.get("active_yyc_ground_validation")
         if validation and validation.get("running_since") is not None:
             self._capture_elapsed(validation, keep_running=False)
+            return True
+        return False
+
+    def _pause_gates_if_running(self, profile: dict[str, Any]) -> bool:
+        game = profile.get("active_gates_game")
+        if game and game.get("running_since") is not None:
+            self._capture_elapsed(game, keep_running=False)
             return True
         return False
 
@@ -679,6 +695,26 @@ class GameStore:
                 questions.append(question)
                 seen_ids.add(question["id"])
         return questions
+
+    def _gates_questions(self) -> list[dict[str, Any]]:
+        return [deepcopy(q) for q in GATES_QUESTION_BANK]
+
+    def _gates_question_by_id(self, qid: str) -> dict[str, Any]:
+        for q in self._gates_questions():
+            if q["id"] == qid:
+                return q
+        raise APIError("This gate is no longer available.", HTTPStatus.CONFLICT)
+
+    def _effective_gates_question(self, qid: str) -> dict[str, Any]:
+        return self._gates_question_by_id(qid)
+
+    def _public_gates_question(self, qid: str) -> dict[str, Any]:
+        q = self._effective_gates_question(qid)
+        return {"id": q["id"], "label": q["label"], "category": q["category"], "clue": q["clue"]}
+
+    def _configured_gates_answer_view(self, qid: str) -> dict[str, Any]:
+        q = self._effective_gates_question(qid)
+        return {"paths": deepcopy(q["paths"]), "tolerance": q["tolerance"], "source_label": "Supplied gates marker"}
 
     def _normalise_custom_question(self, raw: Any) -> dict[str, Any]:
         if not isinstance(raw, dict):
@@ -1028,6 +1064,26 @@ class GameStore:
             "placements": deepcopy(game.get("placements", [])),
         }
 
+    def _gates_view(self, profile: dict[str, Any]) -> dict[str, Any] | None:
+        game = profile.get("active_gates_game")
+        if not game:
+            return None
+        queue = game.get("queue", [])
+        current = self._public_gates_question(queue[0]) if queue else None
+        return {
+            "id": game["id"],
+            "started_at": game["started_at"],
+            "question_total": int(game["question_total"]),
+            "completed_count": len(game.get("completed", [])),
+            "remaining_count": len(queue),
+            "attempts": int(game.get("attempts", 0)),
+            "incorrect": int(game.get("incorrect", 0)),
+            "elapsed_seconds": int(round(self._elapsed(game))),
+            "is_running": game.get("running_since") is not None,
+            "current": current,
+            "placements": deepcopy(game.get("placements", [])),
+        }
+
     def _locations_validation_view(self, profile: dict[str, Any]) -> dict[str, Any] | None:
         validation = profile.get("active_locations_validation")
         if not validation:
@@ -1130,6 +1186,7 @@ class GameStore:
             "active": self._active_view(profile),
             "locations": self._locations_view(profile),
             "yyc_ground": self._yyc_ground_view(profile),
+            "gates": self._gates_view(profile),
             "validation": self._validation_view(profile),
             "locations_validation": self._locations_validation_view(profile),
             "yyc_ground_validation": self._yyc_ground_validation_view(profile),
@@ -1140,6 +1197,8 @@ class GameStore:
                 "last_locations_completed": deepcopy(profile.get("last_locations_completed")),
                 "yyc_ground_session_count": len(profile.get("yyc_ground_sessions", [])),
                 "last_yyc_ground_completed": deepcopy(profile.get("last_yyc_ground_completed")),
+                "gates_session_count": len(profile.get("gates_sessions", [])),
+                "last_gates_completed": deepcopy(profile.get("last_gates_completed")),
                 "locations_validation_count": len(profile.get("locations_validation_sessions", [])),
                 "yyc_ground_validation_count": len(profile.get("yyc_ground_validation_sessions", [])),
                 "last_yyc_ground_validation": deepcopy(profile.get("last_yyc_ground_validation")),
@@ -1160,6 +1219,7 @@ class GameStore:
             "question_total": len(self._all_questions()),
             "locations_question_total": len(self._locations_source_questions()),
             "yyc_ground_question_total": len(self._yyc_ground_questions()),
+            "gates_question_total": len(self._gates_questions()),
         }
 
     def state(self, raw_username: Any) -> dict[str, Any]:
@@ -1183,6 +1243,7 @@ class GameStore:
             self._pause_locations_validation_if_running(profile)
             self._pause_yyc_ground_game_if_running(profile)
             self._pause_yyc_ground_validation_if_running(profile)
+            self._pause_gates_if_running(profile)
             question_ids = [question["id"] for question in self._all_questions()]
             if not question_ids:
                 raise APIError("There are no questions in the practice bank.", HTTPStatus.CONFLICT)
@@ -1363,6 +1424,7 @@ class GameStore:
             self._pause_locations_validation_if_running(profile)
             self._pause_yyc_ground_game_if_running(profile)
             self._pause_yyc_ground_validation_if_running(profile)
+            self._pause_gates_if_running(profile)
             question_ids = [question["id"] for question in self._locations_source_questions()]
             if not question_ids:
                 raise APIError("There are no airport-location questions in the bank.", HTTPStatus.CONFLICT)
@@ -1540,6 +1602,7 @@ class GameStore:
             self._pause_validation_if_running(profile)
             self._pause_locations_validation_if_running(profile)
             self._pause_yyc_ground_validation_if_running(profile)
+            self._pause_gates_if_running(profile)
             question_ids = [question["id"] for question in self._yyc_ground_questions()]
             random.SystemRandom().shuffle(question_ids)
             profile["active_yyc_ground_game"] = {
@@ -1756,6 +1819,158 @@ class GameStore:
             return {"id": question["id"], "label": question["label"], "paths": deepcopy(question["paths"]), "tolerance": question["tolerance"]}
 
     # ------------------------------------------------------------------
+    # Gates identification game
+    # ------------------------------------------------------------------
+    def start_gates_game(self, raw_username: Any, replace_active: bool = False) -> dict[str, Any]:
+        with self.lock:
+            key, profile = self._profile(raw_username, create=True)
+            if profile.get("active_gates_game") and not replace_active:
+                raise APIError("A saved gates game is already in progress. Resume it or explicitly discard it first.", HTTPStatus.CONFLICT)
+            self._pause_game_if_running(profile)
+            self._pause_locations_if_running(profile)
+            self._pause_validation_if_running(profile)
+            self._pause_locations_validation_if_running(profile)
+            self._pause_yyc_ground_game_if_running(profile)
+            self._pause_yyc_ground_validation_if_running(profile)
+            question_ids = [q["id"] for q in self._gates_questions()]
+            random.SystemRandom().shuffle(question_ids)
+            profile["active_gates_game"] = {
+                "id": uuid.uuid4().hex[:12],
+                "started_at": utc_now(),
+                "question_total": len(question_ids),
+                "queue": question_ids,
+                "completed": [],
+                "placements": [],
+                "attempts": 0,
+                "incorrect": 0,
+                "events": [],
+                "elapsed_seconds": 0.0,
+                "running_since": time.time(),
+            }
+            self._touch(profile)
+            self._save()
+            return self._memory_snapshot(key, profile)
+
+    def resume_gates_game(self, raw_username: Any) -> dict[str, Any]:
+        with self.lock:
+            key, profile = self._profile(raw_username, create=True)
+            game = profile.get("active_gates_game")
+            if not game:
+                raise APIError("There is no saved gates game to resume.", HTTPStatus.NOT_FOUND)
+            self._pause_game_if_running(profile)
+            self._pause_locations_if_running(profile)
+            self._pause_validation_if_running(profile)
+            self._pause_locations_validation_if_running(profile)
+            self._pause_yyc_ground_game_if_running(profile)
+            self._pause_yyc_ground_validation_if_running(profile)
+            if game.get("running_since") is None:
+                game["running_since"] = time.time()
+            self._touch(profile)
+            self._save()
+            return self._memory_snapshot(key, profile)
+
+    def pause_gates_game(self, raw_username: Any) -> dict[str, Any]:
+        with self.lock:
+            key, profile = self._profile(raw_username, create=True)
+            if self._pause_gates_if_running(profile):
+                self._touch(profile)
+                self._save()
+            return self._memory_snapshot(key, profile)
+
+    def _update_gates_stat(self, profile: dict[str, Any], qid: str, correct: bool) -> None:
+        q = self._effective_gates_question(qid)
+        stats = profile.setdefault("gates_question_stats", {}).setdefault(qid, {"id": qid, "label": q["label"], "category": q["category"], "attempts": 0, "incorrect": 0, "correct": 0, "last_seen": None})
+        stats["attempts"] = int(stats.get("attempts", 0)) + 1
+        if correct:
+            stats["correct"] = int(stats.get("correct", 0)) + 1
+        else:
+            stats["incorrect"] = int(stats.get("incorrect", 0)) + 1
+        stats["last_seen"] = utc_now()
+
+    def _finish_gates_game(self, profile: dict[str, Any], game: dict[str, Any]) -> dict[str, Any]:
+        self._capture_elapsed(game, keep_running=False)
+        game["finished_at"] = utc_now()
+        summary = self._session_summary(game)
+        profile.setdefault("gates_sessions", []).append(summary)
+        profile["last_gates_completed"] = deepcopy(summary)
+        profile["active_gates_game"] = None
+        return summary
+
+    def answer_gates(self, raw_username: Any, x: Any, y: Any) -> dict[str, Any]:
+        x = finite_number(x, "x")
+        y = finite_number(y, "y")
+        if not (-20 <= x <= GATES_CANVAS_WIDTH + 20 and -20 <= y <= GATES_CANVAS_HEIGHT + 20):
+            raise APIError("That click falls outside the gates chart.")
+        with self.lock:
+            key, profile = self._profile(raw_username, create=True)
+            game = profile.get("active_gates_game")
+            if not game or not game.get("queue"):
+                raise APIError("No active gates question is available.", HTTPStatus.CONFLICT)
+            self._pause_game_if_running(profile)
+            self._pause_locations_if_running(profile)
+            self._pause_validation_if_running(profile)
+            self._pause_locations_validation_if_running(profile)
+            self._pause_yyc_ground_game_if_running(profile)
+            self._pause_yyc_ground_validation_if_running(profile)
+            if game.get("running_since") is None:
+                game["running_since"] = time.time()
+            elapsed = self._capture_elapsed(game, keep_running=True)
+            qid = game["queue"][0]
+            question = self._effective_gates_question(qid)
+            correct = hit_test(question, x, y)
+            game["attempts"] = int(game.get("attempts", 0)) + 1
+            game.setdefault("events", []).append({"sequence": len(game.get("events", []))+1, "question_id": qid, "label": question["label"], "correct": correct, "elapsed_seconds": int(round(elapsed)), "answered_at": utc_now()})
+            self._update_gates_stat(profile, qid, correct)
+            game["queue"].pop(0)
+            if correct:
+                game.setdefault("completed", []).append(qid)
+                game.setdefault("placements", []).append({"question_id": qid, "label": question["label"], "category": question["category"], "x": round(x,1), "y": round(y,1)})
+                feedback = f"Correct — {question['label']} found. Marker removed, canvas blank again."
+            else:
+                game["incorrect"] = int(game.get("incorrect", 0)) + 1
+                remaining = game["queue"]
+                insertion_minimum = 1 if remaining else 0
+                insertion_index = random.SystemRandom().randint(insertion_minimum, len(remaining))
+                remaining.insert(insertion_index, qid)
+                feedback = f"Not quite. {question['label']} has been returned to the queue."
+            finished_summary = None
+            if not game["queue"]:
+                finished_summary = self._finish_gates_game(profile, game)
+            self._touch(profile)
+            self._save()
+            return {"correct": correct, "feedback": feedback, "clicked": {"x": round(x,1), "y": round(y,1)}, "question": self._public_gates_question(qid), "finished": finished_summary is not None, "summary": finished_summary, "state": self._memory_snapshot(key, profile)}
+
+    def gates_hint(self, raw_username: Any) -> dict[str, Any]:
+        with self.lock:
+            _, profile = self._profile(raw_username, create=True)
+            game = profile.get("active_gates_game")
+            if not game or not game.get("queue"):
+                raise APIError("No active gates question is available.", HTTPStatus.CONFLICT)
+            q = self._effective_gates_question(game["queue"][0])
+            return {"id": q["id"], "label": q["label"], "paths": deepcopy(q["paths"]), "tolerance": q["tolerance"]}
+
+    def gates_trends(self, raw_username: Any) -> dict[str, Any]:
+        with self.lock:
+            _, profile = self._profile(raw_username, create=True)
+            sessions = []
+            for session in profile.get("gates_sessions", []):
+                attempts = int(session.get("attempts", 0))
+                incorrect = int(session.get("incorrect", 0))
+                sessions.append({"id": session.get("id"), "started_at": session.get("started_at"), "finished_at": session.get("finished_at"), "duration_seconds": int(session.get("duration_seconds", 0)), "question_total": int(session.get("question_total", len(self._gates_questions()))), "attempts": attempts, "incorrect": incorrect, "correct": max(0, attempts - incorrect), "accuracy": round((attempts - incorrect)/attempts*100,1) if attempts else 0.0, "events": deepcopy(session.get("events", []))})
+            question_stats = []
+            for q in self._gates_questions():
+                stat = profile.get("gates_question_stats", {}).get(q["id"], {})
+                attempts = int(stat.get("attempts", 0))
+                incorrect = int(stat.get("incorrect", 0))
+                question_stats.append({"id": q["id"], "label": q["label"], "category": q["category"], "attempts": attempts, "incorrect": incorrect, "correct": int(stat.get("correct",0)), "accuracy": round((attempts - incorrect)/attempts*100,1) if attempts else None})
+            question_stats.sort(key=lambda item: (-item["incorrect"], -item["attempts"], item["label"]))
+            total_attempts = sum(s["attempts"] for s in sessions)
+            total_incorrect = sum(s["incorrect"] for s in sessions)
+            total_duration = sum(s["duration_seconds"] for s in sessions)
+            lifetime = {"sessions": len(sessions), "attempts": total_attempts, "incorrect": total_incorrect, "correct": max(0, total_attempts - total_incorrect), "accuracy": round((total_attempts - total_incorrect)/total_attempts*100,1) if total_attempts else 0.0, "average_duration_seconds": round(total_duration/len(sessions)) if sessions else 0, "total_duration_seconds": total_duration}
+            return {"user": {"name": profile["display_name"]}, "lifetime": lifetime, "sessions": sessions, "question_stats": question_stats, "active": self._gates_view(profile), "configuration": {"question_count": len(self._gates_questions())}}
+
+    # ------------------------------------------------------------------
     # Airport locations validation (shared-bank editor)
     # ------------------------------------------------------------------
     def start_locations_validation(self, raw_username: Any, replace_active: bool = False) -> dict[str, Any]:
@@ -1771,6 +1986,7 @@ class GameStore:
             self._pause_validation_if_running(profile)
             self._pause_yyc_ground_game_if_running(profile)
             self._pause_yyc_ground_validation_if_running(profile)
+            self._pause_gates_if_running(profile)
             question_ids = [question["id"] for question in self._locations_source_questions()]
             profile["active_locations_validation"] = {
                 "id": uuid.uuid4().hex[:12],
@@ -2100,6 +2316,7 @@ class GameStore:
             self._pause_yyc_ground_game_if_running(profile)
             self._pause_validation_if_running(profile)
             self._pause_locations_validation_if_running(profile)
+            self._pause_gates_if_running(profile)
             questions = [question["id"] for question in self._yyc_ground_questions()]
             profile["active_yyc_ground_validation"] = {
                 "id": uuid.uuid4().hex[:12],
@@ -2364,6 +2581,7 @@ class GameStore:
             self._pause_locations_validation_if_running(profile)
             self._pause_yyc_ground_game_if_running(profile)
             self._pause_yyc_ground_validation_if_running(profile)
+            self._pause_gates_if_running(profile)
             question_ids = [question["id"] for question in self._all_questions()]
             profile["active_validation"] = {
                 "id": uuid.uuid4().hex[:12],
@@ -2959,7 +3177,7 @@ class GameStore:
             if key in memory["users"]:
                 raise APIError("The backup contains duplicate user names.")
             memory["users"][key] = profile
-        memory["schema_version"] = 10
+        memory["schema_version"] = 11
         return memory
 
     def import_full_data(self, raw_username: Any, raw_data: Any) -> dict[str, Any]:
@@ -3554,6 +3772,9 @@ class AirportLabelHandler(BaseHTTPRequestHandler):
             if path == "/api/yyc-ground/trends":
                 self._send_json(STORE.yyc_ground_trends(self._request_user()))
                 return
+            if path == "/api/gates/trends":
+                self._send_json(STORE.gates_trends(self._request_user()))
+                return
             if path == "/api/question-banks/export":
                 self._send_json(STORE.export_question_banks(self._request_user()))
                 return
@@ -3625,6 +3846,16 @@ class AirportLabelHandler(BaseHTTPRequestHandler):
                     result = STORE.answer_location(username, payload.get("x"), payload.get("y"))
                 elif path == "/api/locations/hint":
                     result = STORE.location_hint(username)
+                elif path == "/api/gates/new":
+                    result = STORE.start_gates_game(username, bool(payload.get("replace_active", False)))
+                elif path == "/api/gates/resume":
+                    result = STORE.resume_gates_game(username)
+                elif path == "/api/gates/pause":
+                    result = STORE.pause_gates_game(username)
+                elif path == "/api/gates/answer":
+                    result = STORE.answer_gates(username, payload.get("x"), payload.get("y"))
+                elif path == "/api/gates/hint":
+                    result = STORE.gates_hint(username)
                 elif path == "/api/yyc-ground/new":
                     result = STORE.start_yyc_ground_game(username, bool(payload.get("replace_active", False)))
                 elif path == "/api/yyc-ground/resume":

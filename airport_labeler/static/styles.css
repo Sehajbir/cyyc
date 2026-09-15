@@ -262,6 +262,28 @@ h1 em { color: var(--blue); font-family: Georgia, "Times New Roman", serif; font
 .import-bank-label { cursor: pointer; }
 .bank-tools-status { width: 100%; margin-top: 2px !important; color: #6c8089 !important; font-size: 10px !important; text-align: right; }
 
+/* Gates identification */
+.gates-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  margin-top: 18px;
+  padding: 23px 24px;
+  border: 1px solid #c9d8ff;
+  border-radius: var(--radius-lg);
+  background: radial-gradient(circle at 88% 18%, rgba(60, 120, 220, .12), transparent 15rem), rgba(245, 248, 255, .82);
+}
+.gates-strip-copy { display: flex; align-items: flex-start; gap: 14px; max-width: 760px; }
+.gates-orb { display: grid; flex: 0 0 auto; width: 35px; height: 35px; place-items: center; color: #2f5cb8; border: 1px solid #a9bff0; border-radius: 50%; background: #e6efff; font-size: 18px; font-weight: 800; }
+.gates-strip .eyebrow { margin-bottom: 4px; color: #2f5cb8; }
+.gates-strip h2 { margin: 0 0 5px; color: #23395d; font-size: 18px; }
+.gates-strip p:not(.eyebrow) { margin: 0; color: #5b6b88; font-size: 12px; line-height: 1.5; }
+.gates-strip-actions { display: grid; flex: 0 0 min(340px, 36%); gap: 8px; justify-items: start; }
+.gates-strip-actions > p { color: #6d7ea1; font-size: 10px !important; }
+.button-gates { color: white; border-color: #2e5bb7; background: linear-gradient(135deg, #2f5cb8, #5a8de8); box-shadow: 0 9px 18px rgba(47, 92, 184, .18); }
+.button-gates:hover { color: white; border-color: #244a9a; background: linear-gradient(135deg, #244a9a, #4c7dd1); }
+
 /* YYC Ground Sort Program */
 .yyc-ground-strip {
   display: flex;
@@ -399,6 +421,8 @@ h1 em { color: var(--blue); font-family: Georgia, "Times New Roman", serif; font
 .timer-readout strong { color: #193b4f; font-size: 20px; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 
 .game-layout { display: grid; grid-template-columns: minmax(405px, 1fr) minmax(308px, 365px); gap: clamp(20px, 3vw, 46px); align-items: start; }
+.game-layout.gates-mode { grid-template-columns: minmax(600px, 1.35fr) minmax(300px, 0.65fr); }
+.game-layout.gates-mode .map-frame { width: min(100%, 980px); max-width: 980px; }
 .map-column { min-width: 0; }
 .map-frame {
   position: relative;
@@ -649,6 +673,7 @@ tbody tr:last-child td { border-bottom: 0; }
 @media (max-width: 1000px) {
   .hero-grid { gap: 34px; }
   .game-layout { grid-template-columns: minmax(380px, 1fr) 325px; gap: 20px; }
+  .game-layout.gates-mode { grid-template-columns: minmax(380px, 1fr) 325px; }
   .validation-review-layout { grid-template-columns: minmax(380px, 1fr) 325px; gap: 20px; }
   .question-panel { padding: 17px; }
   .question-card { padding: 18px 16px; }
@@ -673,8 +698,8 @@ tbody tr:last-child td { border-bottom: 0; }
   .feature-row { grid-template-columns: 1fr; margin-top: 27px; }
   .feature-card { min-height: 0; }
   .memory-strip { align-items: flex-start; flex-direction: column; gap: 11px; }
-  .validation-strip, .locations-strip, .yyc-ground-strip, .flashcards-strip, .bank-tools { align-items: flex-start; flex-direction: column; gap: 17px; }
-  .validation-strip-actions, .locations-strip-actions, .yyc-ground-strip-actions, .flashcards-strip-actions { width: 100%; justify-items: start; }
+  .validation-strip, .locations-strip, .gates-strip, .yyc-ground-strip, .flashcards-strip, .bank-tools { align-items: flex-start; flex-direction: column; gap: 17px; }
+  .validation-strip-actions, .locations-strip-actions, .gates-strip-actions, .yyc-ground-strip-actions, .flashcards-strip-actions { width: 100%; justify-items: start; }
   .bank-tools-actions { justify-content: flex-start; }
   .bank-tools-status { text-align: left; }
   .game-topline { align-items: flex-start; }
