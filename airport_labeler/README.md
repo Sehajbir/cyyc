@@ -66,6 +66,19 @@ sector diagrams.
 The supplied YYC answer key is stored as `assets/yyc_ground_filled.png`; the blank
 exercise canvas is `assets/yyc_ground_blank.png`.
 
+## Apron Ops
+
+Choose **Apron Ops** from the main menu to practice CYYC apron control operations.
+
+- Aircraft dynamically request either:
+  - **Departure**: pushback from a gate to exit the apron for an assigned runway (17L, 17R, 35L, or 35R). The controller instructs the aircraft to push back to a parking spot, assigns an exit taxiway, and designates the contact ground frequency (West Ground 121.9 or East Ground 125.35).
+  - **Arrival**: apron entry to park at a gate from an assigned runway (17L, 17R, 35L, or 35R). The controller assigns the entry taxiway.
+- Gate numbers cover all 66 CYYC terminal gates: `1-6`, `11-24`, `31-40`, `50-59`, `70-76`, `78-92`, and `94-97`.
+- Questions are generated randomly each time, selecting a runway, realistic CYYC aircraft callsign, operation request, and gate.
+- If multiple spots or taxiway options are valid for a gate, selecting any valid option is considered correct.
+- Includes `Gates.png` as a study guide reference, along with reference tabs for `Rules_17` and `Rules_35`.
+- Incorrect clearances return to the queue until solved, and active session trends are saved per user profile.
+
 ## Flashcard decks
 
 The **Flashcard decks** segment is a per-user Quizlet-style study area.

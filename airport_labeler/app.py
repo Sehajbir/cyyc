@@ -34,10 +34,17 @@ from game_data import CANVAS_HEIGHT, CANVAS_WIDTH, QUESTION_BANK
 from locations_data import LOCATIONS_CANVAS_HEIGHT, LOCATIONS_CANVAS_WIDTH, LOCATION_QUESTION_BANK
 from yyc_ground_data import YYC_GROUND_CANVAS_HEIGHT, YYC_GROUND_CANVAS_WIDTH, YYC_GROUND_QUESTION_BANK
 from gates_data import GATES_CANVAS_HEIGHT, GATES_CANVAS_WIDTH, GATES_QUESTION_BANK
+from apron_ops_data import (
+    generate_apron_ops_session,
+    check_apron_ops_answer,
+    public_apron_ops_question,
+    APRON_OPS_DEFAULT_COUNT,
+)
 
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
 ASSETS_DIR = ROOT / "assets"
+UPLOADS_DIR = ROOT.parent / "uploads" if (ROOT.parent / "uploads").exists() else ROOT / "assets"
 # Deployments should point this at a persistent mounted volume. Local development
 # keeps the original project-relative data directory by default.
 DATA_DIR = Path(os.environ.get("AIRPORT_LABELER_DATA_DIR", str(ROOT / "data"))).expanduser()
@@ -185,6 +192,7 @@ class GameStore:
             "active_locations_game": None,
             "active_yyc_ground_game": None,
             "active_gates_game": None,
+            "active_apron_ops_game": None,
             "active_validation": None,
             "active_locations_validation": None,
             "active_yyc_ground_validation": None,
@@ -192,6 +200,7 @@ class GameStore:
             "location_sessions": [],
             "yyc_ground_sessions": [],
             "gates_sessions": [],
+            "apron_ops_sessions": [],
             "validation_sessions": [],
             "locations_validation_sessions": [],
             "yyc_ground_validation_sessions": [],
@@ -199,10 +208,12 @@ class GameStore:
             "location_question_stats": {},
             "yyc_ground_question_stats": {},
             "gates_question_stats": {},
+            "apron_ops_question_stats": {},
             "last_completed": None,
             "last_locations_completed": None,
             "last_yyc_ground_completed": None,
             "last_gates_completed": None,
+            "last_apron_ops_completed": None,
             "last_validation": None,
             "last_locations_validation": None,
             "last_yyc_ground_validation": None,
@@ -234,12 +245,12 @@ class GameStore:
     @staticmethod
     def _legacy_has_user_data(loaded: dict[str, Any]) -> bool:
         keys = (
-            "active_game", "active_locations_game", "active_yyc_ground_game", "active_gates_game",
+            "active_game", "active_locations_game", "active_yyc_ground_game", "active_gates_game", "active_apron_ops_game",
             "active_validation", "active_locations_validation", "active_yyc_ground_validation",
-            "sessions", "location_sessions", "yyc_ground_sessions", "gates_sessions",
+            "sessions", "location_sessions", "yyc_ground_sessions", "gates_sessions", "apron_ops_sessions",
             "validation_sessions", "locations_validation_sessions", "yyc_ground_validation_sessions",
-            "question_stats", "location_question_stats", "yyc_ground_question_stats", "gates_question_stats",
-            "last_completed", "last_locations_completed", "last_yyc_ground_completed", "last_gates_completed",
+            "question_stats", "location_question_stats", "yyc_ground_question_stats", "gates_question_stats", "apron_ops_question_stats",
+            "last_completed", "last_locations_completed", "last_yyc_ground_completed", "last_gates_completed", "last_apron_ops_completed",
             "last_validation", "last_locations_validation", "last_yyc_ground_validation", "flashcard_decks",
         )
         for key in keys:
@@ -251,12 +262,12 @@ class GameStore:
     def _legacy_profile(self, loaded: dict[str, Any]) -> dict[str, Any]:
         profile = self._empty_profile("Guest")
         for key in (
-            "active_game", "active_locations_game", "active_yyc_ground_game", "active_gates_game",
+            "active_game", "active_locations_game", "active_yyc_ground_game", "active_gates_game", "active_apron_ops_game",
             "active_validation", "active_locations_validation", "active_yyc_ground_validation",
-            "sessions", "location_sessions", "yyc_ground_sessions", "gates_sessions",
+            "sessions", "location_sessions", "yyc_ground_sessions", "gates_sessions", "apron_ops_sessions",
             "validation_sessions", "locations_validation_sessions", "yyc_ground_validation_sessions",
-            "question_stats", "location_question_stats", "yyc_ground_question_stats", "gates_question_stats",
-            "last_completed", "last_locations_completed", "last_yyc_ground_completed", "last_gates_completed",
+            "question_stats", "location_question_stats", "yyc_ground_question_stats", "gates_question_stats", "apron_ops_question_stats",
+            "last_completed", "last_locations_completed", "last_yyc_ground_completed", "last_gates_completed", "last_apron_ops_completed",
             "last_validation", "last_locations_validation", "last_yyc_ground_validation", "flashcard_decks",
         ):
             if key in loaded:
@@ -278,10 +289,10 @@ class GameStore:
             if key in raw:
                 profile[key] = deepcopy(raw[key])
         profile["display_name"] = display_name
-        for list_key in ("sessions", "location_sessions", "yyc_ground_sessions", "gates_sessions", "validation_sessions", "locations_validation_sessions", "yyc_ground_validation_sessions", "flashcard_decks"):
+        for list_key in ("sessions", "location_sessions", "yyc_ground_sessions", "gates_sessions", "apron_ops_sessions", "apron_ops_sessions", "validation_sessions", "locations_validation_sessions", "yyc_ground_validation_sessions", "flashcard_decks"):
             if not isinstance(profile[list_key], list):
                 profile[list_key] = []
-        for dict_key in ("question_stats", "location_question_stats", "yyc_ground_question_stats", "gates_question_stats"):
+        for dict_key in ("question_stats", "location_question_stats", "yyc_ground_question_stats", "gates_question_stats", "apron_ops_question_stats", "apron_ops_question_stats"):
             if not isinstance(profile[dict_key], dict):
                 profile[dict_key] = {}
         if profile["active_game"] is not None and not isinstance(profile["active_game"], dict):
@@ -292,6 +303,8 @@ class GameStore:
             profile["active_yyc_ground_game"] = None
         if profile["active_gates_game"] is not None and not isinstance(profile["active_gates_game"], dict):
             profile["active_gates_game"] = None
+        if profile["active_apron_ops_game"] is not None and not isinstance(profile["active_apron_ops_game"], dict):
+            profile["active_apron_ops_game"] = None
         if profile["active_validation"] is not None and not isinstance(profile["active_validation"], dict):
             profile["active_validation"] = None
         if profile["active_locations_validation"] is not None and not isinstance(profile["active_locations_validation"], dict):
@@ -306,6 +319,8 @@ class GameStore:
             profile["active_yyc_ground_game"]["running_since"] = None
         if profile["active_gates_game"]:
             profile["active_gates_game"]["running_since"] = None
+        if profile["active_apron_ops_game"]:
+            profile["active_apron_ops_game"]["running_since"] = None
         if profile["active_validation"]:
             profile["active_validation"]["running_since"] = None
             profile["active_validation"].setdefault("phase", "review")
@@ -525,6 +540,13 @@ class GameStore:
 
     def _pause_gates_if_running(self, profile: dict[str, Any]) -> bool:
         game = profile.get("active_gates_game")
+        if game and game.get("running_since") is not None:
+            self._capture_elapsed(game, keep_running=False)
+            return True
+        return False
+
+    def _pause_apron_ops_if_running(self, profile: dict[str, Any]) -> bool:
+        game = profile.get("active_apron_ops_game")
         if game and game.get("running_since") is not None:
             self._capture_elapsed(game, keep_running=False)
             return True
@@ -1084,6 +1106,25 @@ class GameStore:
             "placements": deepcopy(game.get("placements", [])),
         }
 
+    def _apron_ops_view(self, profile: dict[str, Any]) -> dict[str, Any] | None:
+        game = profile.get("active_apron_ops_game")
+        if not game:
+            return None
+        queue = game.get("queue", [])
+        current = public_apron_ops_question(queue[0]) if queue else None
+        return {
+            "id": game["id"],
+            "started_at": game["started_at"],
+            "question_total": int(game["question_total"]),
+            "completed_count": len(game.get("completed", [])),
+            "remaining_count": len(queue),
+            "attempts": int(game.get("attempts", 0)),
+            "incorrect": int(game.get("incorrect", 0)),
+            "elapsed_seconds": int(round(self._elapsed(game))),
+            "is_running": game.get("running_since") is not None,
+            "current": current,
+        }
+
     def _locations_validation_view(self, profile: dict[str, Any]) -> dict[str, Any] | None:
         validation = profile.get("active_locations_validation")
         if not validation:
@@ -1187,6 +1228,7 @@ class GameStore:
             "locations": self._locations_view(profile),
             "yyc_ground": self._yyc_ground_view(profile),
             "gates": self._gates_view(profile),
+            "apron_ops": self._apron_ops_view(profile),
             "validation": self._validation_view(profile),
             "locations_validation": self._locations_validation_view(profile),
             "yyc_ground_validation": self._yyc_ground_validation_view(profile),
@@ -1199,6 +1241,8 @@ class GameStore:
                 "last_yyc_ground_completed": deepcopy(profile.get("last_yyc_ground_completed")),
                 "gates_session_count": len(profile.get("gates_sessions", [])),
                 "last_gates_completed": deepcopy(profile.get("last_gates_completed")),
+                "apron_ops_session_count": len(profile.get("apron_ops_sessions", [])),
+                "last_apron_ops_completed": deepcopy(profile.get("last_apron_ops_completed")),
                 "locations_validation_count": len(profile.get("locations_validation_sessions", [])),
                 "yyc_ground_validation_count": len(profile.get("yyc_ground_validation_sessions", [])),
                 "last_yyc_ground_validation": deepcopy(profile.get("last_yyc_ground_validation")),
@@ -1220,6 +1264,7 @@ class GameStore:
             "locations_question_total": len(self._locations_source_questions()),
             "yyc_ground_question_total": len(self._yyc_ground_questions()),
             "gates_question_total": len(self._gates_questions()),
+            "apron_ops_question_total": APRON_OPS_DEFAULT_COUNT,
         }
 
     def state(self, raw_username: Any) -> dict[str, Any]:
@@ -1971,6 +2016,228 @@ class GameStore:
             return {"user": {"name": profile["display_name"]}, "lifetime": lifetime, "sessions": sessions, "question_stats": question_stats, "active": self._gates_view(profile), "configuration": {"question_count": len(self._gates_questions())}}
 
     # ------------------------------------------------------------------
+    # Apron Ops game mode
+    # ------------------------------------------------------------------
+    def start_apron_ops_game(self, raw_username: Any, replace_active: bool = False, count: int = APRON_OPS_DEFAULT_COUNT) -> dict[str, Any]:
+        with self.lock:
+            key, profile = self._profile(raw_username, create=True)
+            if profile.get("active_apron_ops_game") and not replace_active:
+                raise APIError("A saved Apron Ops session is already in progress. Resume it or explicitly discard it first.", HTTPStatus.CONFLICT)
+            self._pause_game_if_running(profile)
+            self._pause_locations_if_running(profile)
+            self._pause_validation_if_running(profile)
+            self._pause_locations_validation_if_running(profile)
+            self._pause_yyc_ground_game_if_running(profile)
+            self._pause_yyc_ground_validation_if_running(profile)
+            self._pause_gates_if_running(profile)
+            questions = generate_apron_ops_session(count)
+            profile["active_apron_ops_game"] = {
+                "id": uuid.uuid4().hex[:12],
+                "started_at": utc_now(),
+                "question_total": len(questions),
+                "queue": questions,
+                "completed": [],
+                "attempts": 0,
+                "incorrect": 0,
+                "events": [],
+                "elapsed_seconds": 0.0,
+                "running_since": time.time(),
+            }
+            self._touch(profile)
+            self._save()
+            return self._memory_snapshot(key, profile)
+
+    def resume_apron_ops_game(self, raw_username: Any) -> dict[str, Any]:
+        with self.lock:
+            key, profile = self._profile(raw_username, create=True)
+            game = profile.get("active_apron_ops_game")
+            if not game:
+                raise APIError("There is no saved Apron Ops session to resume.", HTTPStatus.NOT_FOUND)
+            self._pause_game_if_running(profile)
+            self._pause_locations_if_running(profile)
+            self._pause_validation_if_running(profile)
+            self._pause_locations_validation_if_running(profile)
+            self._pause_yyc_ground_game_if_running(profile)
+            self._pause_yyc_ground_validation_if_running(profile)
+            self._pause_gates_if_running(profile)
+            if game.get("running_since") is None:
+                game["running_since"] = time.time()
+            self._touch(profile)
+            self._save()
+            return self._memory_snapshot(key, profile)
+
+    def pause_apron_ops_game(self, raw_username: Any) -> dict[str, Any]:
+        with self.lock:
+            key, profile = self._profile(raw_username, create=True)
+            if self._pause_apron_ops_if_running(profile):
+                self._touch(profile)
+                self._save()
+            return self._memory_snapshot(key, profile)
+
+    def _update_apron_ops_stat(self, profile: dict[str, Any], question: dict[str, Any], correct: bool) -> None:
+        stat_id = f"gate_{question['gate']:02d}"
+        label = f"Gate {question['gate']} ({question.get('concourse', '')})"
+        category = f"Apron {question.get('request_type', '').capitalize()}"
+        stats = profile.setdefault("apron_ops_question_stats", {}).setdefault(
+            stat_id,
+            {
+                "id": stat_id,
+                "gate": question["gate"],
+                "label": label,
+                "category": category,
+                "attempts": 0,
+                "incorrect": 0,
+                "correct": 0,
+                "last_seen": None,
+            }
+        )
+        stats["attempts"] = int(stats.get("attempts", 0)) + 1
+        if correct:
+            stats["correct"] = int(stats.get("correct", 0)) + 1
+        else:
+            stats["incorrect"] = int(stats.get("incorrect", 0)) + 1
+        stats["last_seen"] = utc_now()
+
+    def _finish_apron_ops_game(self, profile: dict[str, Any], game: dict[str, Any]) -> dict[str, Any]:
+        self._capture_elapsed(game, keep_running=False)
+        game["finished_at"] = utc_now()
+        summary = self._session_summary(game)
+        profile.setdefault("apron_ops_sessions", []).append(summary)
+        profile["last_apron_ops_completed"] = deepcopy(summary)
+        profile["active_apron_ops_game"] = None
+        return summary
+
+    def answer_apron_ops(
+        self,
+        raw_username: Any,
+        spot: Any = None,
+        taxiway: Any = None,
+        ground: Any = None,
+    ) -> dict[str, Any]:
+        with self.lock:
+            key, profile = self._profile(raw_username, create=True)
+            game = profile.get("active_apron_ops_game")
+            if not game or not game.get("queue"):
+                raise APIError("No active Apron Ops question is available.", HTTPStatus.CONFLICT)
+            self._pause_game_if_running(profile)
+            self._pause_locations_if_running(profile)
+            self._pause_validation_if_running(profile)
+            self._pause_locations_validation_if_running(profile)
+            self._pause_yyc_ground_game_if_running(profile)
+            self._pause_yyc_ground_validation_if_running(profile)
+            self._pause_gates_if_running(profile)
+
+            if game.get("running_since") is None:
+                game["running_since"] = time.time()
+            elapsed = self._capture_elapsed(game, keep_running=True)
+
+            question = game["queue"][0]
+            qid = question["id"]
+            user_answer = {
+                "spot": spot,
+                "taxiway": taxiway,
+                "ground": ground,
+            }
+            eval_result = check_apron_ops_answer(question, user_answer)
+            correct = eval_result["correct"]
+            feedback = eval_result["feedback"]
+            breakdown = eval_result["breakdown"]
+
+            game["attempts"] = int(game.get("attempts", 0)) + 1
+            game.setdefault("events", []).append({
+                "sequence": len(game.get("events", [])) + 1,
+                "question_id": qid,
+                "label": question["label"],
+                "request_type": question["request_type"],
+                "gate": question["gate"],
+                "runway": question["runway"],
+                "correct": correct,
+                "elapsed_seconds": int(round(elapsed)),
+                "answered_at": utc_now(),
+            })
+            self._update_apron_ops_stat(profile, question, correct)
+
+            game["queue"].pop(0)
+            if correct:
+                game.setdefault("completed", []).append(qid)
+            else:
+                game["incorrect"] = int(game.get("incorrect", 0)) + 1
+                remaining = game["queue"]
+                insertion_minimum = 1 if remaining else 0
+                insertion_index = random.SystemRandom().randint(insertion_minimum, len(remaining))
+                remaining.insert(insertion_index, question)
+
+            finished_summary = None
+            if not game["queue"]:
+                finished_summary = self._finish_apron_ops_game(profile, game)
+
+            self._touch(profile)
+            self._save()
+            return {
+                "correct": correct,
+                "feedback": feedback,
+                "breakdown": breakdown,
+                "question": public_apron_ops_question(question),
+                "finished": finished_summary is not None,
+                "summary": finished_summary,
+                "state": self._memory_snapshot(key, profile),
+            }
+
+    def apron_ops_trends(self, raw_username: Any) -> dict[str, Any]:
+        with self.lock:
+            _, profile = self._profile(raw_username, create=True)
+            sessions = []
+            for session in profile.get("apron_ops_sessions", []):
+                attempts = int(session.get("attempts", 0))
+                incorrect = int(session.get("incorrect", 0))
+                sessions.append({
+                    "id": session.get("id"),
+                    "started_at": session.get("started_at"),
+                    "finished_at": session.get("finished_at"),
+                    "duration_seconds": int(session.get("duration_seconds", 0)),
+                    "question_total": int(session.get("question_total", APRON_OPS_DEFAULT_COUNT)),
+                    "attempts": attempts,
+                    "incorrect": incorrect,
+                    "correct": max(0, attempts - incorrect),
+                    "accuracy": round((attempts - incorrect) / attempts * 100, 1) if attempts else 0.0,
+                    "events": deepcopy(session.get("events", [])),
+                })
+            question_stats = []
+            for stat_id, stat in profile.get("apron_ops_question_stats", {}).items():
+                attempts = int(stat.get("attempts", 0))
+                incorrect = int(stat.get("incorrect", 0))
+                question_stats.append({
+                    "id": stat_id,
+                    "label": stat["label"],
+                    "category": stat.get("category", "Apron Ops"),
+                    "attempts": attempts,
+                    "incorrect": incorrect,
+                    "correct": int(stat.get("correct", 0)),
+                    "accuracy": round((attempts - incorrect) / attempts * 100, 1) if attempts else None,
+                })
+            question_stats.sort(key=lambda item: (-item["incorrect"], -item["attempts"], item["label"]))
+            total_attempts = sum(s["attempts"] for s in sessions)
+            total_incorrect = sum(s["incorrect"] for s in sessions)
+            total_duration = sum(s["duration_seconds"] for s in sessions)
+            lifetime = {
+                "sessions": len(sessions),
+                "attempts": total_attempts,
+                "incorrect": total_incorrect,
+                "correct": max(0, total_attempts - total_incorrect),
+                "accuracy": round((total_attempts - total_incorrect) / total_attempts * 100, 1) if total_attempts else 0.0,
+                "average_duration_seconds": round(total_duration / len(sessions)) if sessions else 0,
+                "total_duration_seconds": total_duration,
+            }
+            return {
+                "user": {"name": profile["display_name"]},
+                "lifetime": lifetime,
+                "sessions": sessions,
+                "question_stats": question_stats,
+                "active": self._apron_ops_view(profile),
+                "configuration": {"question_count": APRON_OPS_DEFAULT_COUNT},
+            }
+
+    # ------------------------------------------------------------------
     # Airport locations validation (shared-bank editor)
     # ------------------------------------------------------------------
     def start_locations_validation(self, raw_username: Any, replace_active: bool = False) -> dict[str, Any]:
@@ -2582,6 +2849,7 @@ class GameStore:
             self._pause_yyc_ground_game_if_running(profile)
             self._pause_yyc_ground_validation_if_running(profile)
             self._pause_gates_if_running(profile)
+            self._pause_apron_ops_if_running(profile)
             question_ids = [question["id"] for question in self._all_questions()]
             profile["active_validation"] = {
                 "id": uuid.uuid4().hex[:12],
@@ -3775,6 +4043,9 @@ class AirportLabelHandler(BaseHTTPRequestHandler):
             if path == "/api/gates/trends":
                 self._send_json(STORE.gates_trends(self._request_user()))
                 return
+            if path == "/api/apron-ops/trends":
+                self._send_json(STORE.apron_ops_trends(self._request_user()))
+                return
             if path == "/api/question-banks/export":
                 self._send_json(STORE.export_question_banks(self._request_user()))
                 return
@@ -3856,6 +4127,19 @@ class AirportLabelHandler(BaseHTTPRequestHandler):
                     result = STORE.answer_gates(username, payload.get("x"), payload.get("y"))
                 elif path == "/api/gates/hint":
                     result = STORE.gates_hint(username)
+                elif path == "/api/apron-ops/new":
+                    result = STORE.start_apron_ops_game(username, bool(payload.get("replace_active", False)))
+                elif path == "/api/apron-ops/resume":
+                    result = STORE.resume_apron_ops_game(username)
+                elif path == "/api/apron-ops/pause":
+                    result = STORE.pause_apron_ops_game(username)
+                elif path == "/api/apron-ops/answer":
+                    result = STORE.answer_apron_ops(
+                        username,
+                        spot=payload.get("spot"),
+                        taxiway=payload.get("taxiway"),
+                        ground=payload.get("ground"),
+                    )
                 elif path == "/api/yyc-ground/new":
                     result = STORE.start_yyc_ground_game(username, bool(payload.get("replace_active", False)))
                 elif path == "/api/yyc-ground/resume":
@@ -3972,6 +4256,8 @@ class AirportLabelHandler(BaseHTTPRequestHandler):
             target = STATIC_DIR / unquote(requested_path.removeprefix("/static/"))
         elif requested_path.startswith("/assets/"):
             target = ASSETS_DIR / unquote(requested_path.removeprefix("/assets/"))
+        elif requested_path.startswith("/uploads/"):
+            target = UPLOADS_DIR / unquote(requested_path.removeprefix("/uploads/"))
         else:
             self._send_error_json("Not found.", HTTPStatus.NOT_FOUND)
             return
@@ -3983,8 +4269,9 @@ class AirportLabelHandler(BaseHTTPRequestHandler):
             return
         static_root = STATIC_DIR.resolve()
         assets_root = ASSETS_DIR.resolve()
-        allowed_root = static_root if str(target).startswith(str(static_root)) else assets_root
-        if allowed_root not in target.parents and target != allowed_root:
+        uploads_root = UPLOADS_DIR.resolve()
+        allowed_roots = (static_root, assets_root, uploads_root)
+        if not any(target == r or r in target.parents for r in allowed_roots):
             self._send_error_json("Not found.", HTTPStatus.NOT_FOUND)
             return
         if not target.is_file():
