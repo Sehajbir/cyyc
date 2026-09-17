@@ -677,10 +677,10 @@ class GameStore:
         )
         if require_custom_id and not question["id"].startswith("yyc_custom_"):
             raise APIError("A custom YYC Ground Sort question ID is invalid.")
-        use = cleaned_text(raw.get("use"), "Who can use this point", 30)
-        if use not in {"Jets", "Props", "Jets or Props"}:
-            raise APIError("YYC Ground Sort use must be Jets, Props, or Jets or Props.")
-        question["use"] = use
+        use = cleaned_text(raw.get("use") if isinstance(raw, dict) else None, "Who can use this point", 30, required=False)
+        if use and use not in {"Jets", "Props", "Jets or Props"}:
+            raise APIError("YYC Ground Sort use must be Jets, Props, Jets or Props, or empty for a location-only point.")
+        question["use"] = use or None
         question["created_at"] = raw.get("created_at") if isinstance(raw, dict) else None
         question["source"] = "custom" if require_custom_id else "source"
         return question
@@ -938,9 +938,12 @@ class GameStore:
             try:
                 question["label"] = cleaned_text(detail_override.get("label"), "Question label", 100)
                 question["clue"] = cleaned_text(detail_override.get("clue", ""), "Description", 280, required=False)
-                use = cleaned_text(detail_override.get("use", question["use"]), "Who can use this point", 30)
-                if use in {"Jets", "Props", "Jets or Props"}:
-                    question["use"] = use
+                use = cleaned_text(detail_override.get("use", question["use"]), "Who can use this point", 30, required=False)
+                if use:
+                    if use in {"Jets", "Props", "Jets or Props"}:
+                        question["use"] = use
+                else:
+                    question["use"] = None
             except APIError:
                 pass
         route_override = self.memory.get("yyc_ground_route_overrides", {}).get(question_id)
@@ -973,9 +976,11 @@ class GameStore:
     def _apply_yyc_validation_detail_draft(question: dict[str, Any], validation: dict[str, Any], question_id: str) -> dict[str, Any]:
         draft = validation.get("draft_question_overrides", {}).get(question_id)
         if isinstance(draft, dict):
-            for field in ("label", "clue", "use"):
+            for field in ("label", "clue"):
                 if isinstance(draft.get(field), str):
                     question[field] = draft[field]
+            if "use" in draft:
+                question["use"] = draft.get("use")
         return question
 
     def _configured_yyc_ground_answer_view(self, question_id: str) -> dict[str, Any]:
@@ -1175,7 +1180,7 @@ class GameStore:
             # The use classification is editable in validation and should reflect
             # this user's uncommitted draft before final promotion.
             draft = validation.get("draft_question_overrides", {}).get(question_id, {})
-            if isinstance(draft, dict) and isinstance(draft.get("use"), str):
+            if isinstance(draft, dict) and "use" in draft:
                 current["configured_answer"]["use"] = draft["use"]
         return {
             "id": validation["id"],
@@ -1774,10 +1779,31 @@ class GameStore:
                 }
             )
             self._update_yyc_ground_stat(profile, question_id, correct, "locate")
+            finished_summary = None
             if correct:
-                game["phase"] = "use"
-                game["pending_placement"] = {"x": round(x, 1), "y": round(y, 1)}
-                feedback = f"Correct point — now classify who can use {question['label']}."
+                if question.get("use") is None:
+                    # Location-only point: no Jets / Props follow-up is asked.
+                    placement = {"x": round(x, 1), "y": round(y, 1)}
+                    game["queue"].pop(0)
+                    game.setdefault("completed", []).append(question_id)
+                    game.setdefault("placements", []).append(
+                        {
+                            "question_id": question_id,
+                            "label": question["label"],
+                            "category": question["category"],
+                            "x": placement["x"],
+                            "y": placement["y"],
+                        }
+                    )
+                    game["phase"] = "locate"
+                    game["pending_placement"] = None
+                    feedback = f"Correct — {question['label']} is now labelled."
+                    if not game["queue"]:
+                        finished_summary = self._finish_yyc_ground_game(profile, game)
+                else:
+                    game["phase"] = "use"
+                    game["pending_placement"] = {"x": round(x, 1), "y": round(y, 1)}
+                    feedback = f"Correct point — now classify who can use {question['label']}."
             else:
                 game["incorrect"] = int(game.get("incorrect", 0)) + 1
                 game["queue"].pop(0)
@@ -1787,9 +1813,11 @@ class GameStore:
             self._save()
             return {
                 "correct": correct,
-                "follow_up": correct,
+                "follow_up": correct and question.get("use") is not None,
                 "feedback": feedback,
                 "clicked": {"x": round(x, 1), "y": round(y, 1)},
+                "finished": finished_summary is not None,
+                "summary": finished_summary,
                 "state": self._memory_snapshot(key, profile),
             }
 
@@ -1807,6 +1835,8 @@ class GameStore:
             elapsed = self._capture_elapsed(game, keep_running=True)
             question_id = game["queue"][0]
             question = self._effective_yyc_ground_question(question_id)
+            if question.get("use") is None:
+                raise APIError("This point is location-only and has no aircraft-use follow-up.", HTTPStatus.CONFLICT)
             correct = use == question["use"]
             game["attempts"] = int(game.get("attempts", 0)) + 1
             game.setdefault("events", []).append(
@@ -2714,9 +2744,10 @@ class GameStore:
             question_id = validation["queue"][0]
             label = cleaned_text(label_value, "Question", 100)
             clue = cleaned_text(clue_value, "Description", 280, required=False)
-            use = cleaned_text(use_value, "Who can use this point", 30)
-            if use not in {"Jets", "Props", "Jets or Props"}:
-                raise APIError("Choose Jets, Props, or Jets or Props.")
+            use = cleaned_text(use_value, "Who can use this point", 30, required=False)
+            if use and use not in {"Jets", "Props", "Jets or Props"}:
+                raise APIError("Choose Jets, Props, Jets or Props, or leave the follow-up empty for a location-only point.")
+            use = use or None
             labels = set()
             for question in self._yyc_ground_questions():
                 if question["id"] != question_id:
@@ -2753,9 +2784,10 @@ class GameStore:
             label = cleaned_text(label_value, "Question label", 100)
             category = cleaned_text(category_value, "Category", 40)
             clue = cleaned_text(clue_value, "Description", 280, required=False)
-            use = cleaned_text(use_value, "Who can use this point", 30)
-            if use not in {"Jets", "Props", "Jets or Props"}:
-                raise APIError("Choose Jets, Props, or Jets or Props.")
+            use = cleaned_text(use_value, "Who can use this point", 30, required=False)
+            if use and use not in {"Jets", "Props", "Jets or Props"}:
+                raise APIError("Choose Jets, Props, Jets or Props, or leave the follow-up empty for a location-only point.")
+            use = use or None
             paths = normalise_drawn_paths(raw_paths, YYC_GROUND_CANVAS_WIDTH, YYC_GROUND_CANVAS_HEIGHT, allow_point_paths=True)
             labels = {self._effective_yyc_ground_question(q["id"])["label"].casefold() for q in self._yyc_ground_questions()}
             labels.update(str(q.get("label", "")).casefold() for q in validation.get("draft_custom_questions", []))

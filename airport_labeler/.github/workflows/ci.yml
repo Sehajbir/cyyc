@@ -30,6 +30,7 @@ jobs:
           test -f assets/locations_blank.png
           test -f assets/locations_labelled.png
           test -f assets/yyc_ground_blank.png
+          test -f assets/ground_sort_blank_new.png
           test -f assets/yyc_ground_filled.png
           test -f assets/Gates.png
           test -f locations_data.py
