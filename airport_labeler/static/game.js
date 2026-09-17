@@ -193,6 +193,7 @@
   let studyQueue = [];
   let studyIndex = 0;
   let studyRevealed = false;
+  let studyFlipped = false;
 
   async function request(path, method = "GET", payload = undefined) {
     const options = { method, headers: {} };
@@ -2572,7 +2573,7 @@
     }
   }
 
-  async function startDeckStudy() {
+  async function startDeckStudy(flipped = false) {
     if (!currentDeckId) return;
     try {
       const filter = $("deckStudyFilter").value;
@@ -2585,12 +2586,22 @@
       studyQueue = result.cards;
       studyIndex = 0;
       studyRevealed = false;
+      studyFlipped = Boolean(flipped);
       $("flashcardStudyTitle").textContent = result.deck.title;
+      $("flippedBadge").classList.toggle("hidden", !studyFlipped);
+      $("flashcardStudyEyebrow").classList.toggle("flipped-mode", studyFlipped);
+      $("studyCard").classList.toggle("flipped-mode", studyFlipped);
+      // Adjust eyebrow text to make flipped mode obvious for testing and a11y
+      $("flashcardStudyEyebrow").textContent = studyFlipped ? "FLASHCARD REVIEW · FLIPPED" : "FLASHCARD REVIEW";
       renderStudyCard();
       showScreen($("flashcardStudyScreen"));
     } catch (error) {
       showToast(error.message, "error");
     }
+  }
+
+  function startFlippedDeckStudy() {
+    return startDeckStudy(true);
   }
 
   function setStudyImage(id, image, alt) {
@@ -2606,28 +2617,41 @@
 
   function renderStudyCard() {
     const card = studyQueue[studyIndex];
+    const qLabel = $("studyQuestionLabel");
+    const aLabel = $("studyAnswerLabel");
     if (!card) {
       $("studyQuestionText").textContent = "Review complete";
       $("studyAnswerPanel").classList.add("hidden");
       setStudyImage("studyQuestionImage", null, "");
+      setStudyImage("studyAnswerImage", null, "");
       $("studyTip").textContent = `You rated ${studyQueue.length} ${studyQueue.length === 1 ? "card" : "cards"}. Return to the deck to review another filter.`;
       $("studyRevealActions").classList.remove("hidden");
       $("revealAnswerBtn").textContent = "Back to deck";
       $("editStudyCardBtn").classList.add("hidden");
       $("studyRatingActions").classList.add("hidden");
       $("flashcardStudyProgress").textContent = `${studyQueue.length} / ${studyQueue.length}`;
+      if (qLabel) qLabel.textContent = studyFlipped ? "ANSWER" : "QUESTION";
+      if (aLabel) aLabel.textContent = studyFlipped ? "QUESTION" : "ANSWER";
       return;
     }
     $("flashcardStudyProgress").textContent = `${studyIndex + 1} / ${studyQueue.length}`;
-    $("studyQuestionText").textContent = card.question;
-    $("studyAnswerText").textContent = card.answer;
-    setStudyImage("studyQuestionImage", card.question_image, "Question visual");
-    setStudyImage("studyAnswerImage", card.answer_image, "Answer visual");
+    const promptText = studyFlipped ? card.answer : card.question;
+    const promptImage = studyFlipped ? card.answer_image : card.question_image;
+    const promptAlt = studyFlipped ? "Answer visual" : "Question visual";
+    const revealText = studyFlipped ? card.question : card.answer;
+    const revealImage = studyFlipped ? card.question_image : card.answer_image;
+    const revealAlt = studyFlipped ? "Question visual" : "Answer visual";
+    if (qLabel) qLabel.textContent = studyFlipped ? "ANSWER" : "QUESTION";
+    if (aLabel) aLabel.textContent = studyFlipped ? "QUESTION" : "ANSWER";
+    $("studyQuestionText").textContent = promptText;
+    $("studyAnswerText").textContent = revealText;
+    setStudyImage("studyQuestionImage", promptImage, promptAlt);
+    setStudyImage("studyAnswerImage", revealImage, revealAlt);
     $("studyAnswerPanel").classList.toggle("hidden", !studyRevealed);
-    $("studyTip").textContent = studyRevealed ? "How well did you recall this card?" : "Think of the answer, then reveal the back of the card.";
+    $("studyTip").textContent = studyRevealed ? "How well did you recall this card?" : (studyFlipped ? "Think of the question, then reveal the front of the card." : "Think of the answer, then reveal the back of the card.");
     $("studyRevealActions").classList.toggle("hidden", studyRevealed);
     $("studyRatingActions").classList.toggle("hidden", !studyRevealed);
-    $("revealAnswerBtn").textContent = "Reveal answer";
+    $("revealAnswerBtn").textContent = studyFlipped ? "Reveal question" : "Reveal answer";
     $("editStudyCardBtn").classList.remove("hidden");
   }
 
@@ -2718,7 +2742,8 @@
     $("deckBackBtn").addEventListener("click", showFlashcards);
     $("deckStatsBtn").addEventListener("click", showDeckStats);
     $("addCardBtn").addEventListener("click", () => openFlashcardEditor());
-    $("startDeckStudyBtn").addEventListener("click", startDeckStudy);
+    $("startDeckStudyBtn").addEventListener("click", () => startDeckStudy(false));
+    $("startFlippedDeckStudyBtn").addEventListener("click", startFlippedDeckStudy);
     $("exitStudyBtn").addEventListener("click", () => openFlashcardDeck(currentDeckId));
     $("revealAnswerBtn").addEventListener("click", revealStudyAnswer);
     $("studyCard").addEventListener("click", revealStudyAnswer);

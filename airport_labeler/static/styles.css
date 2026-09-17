@@ -381,6 +381,11 @@ h1 em { color: var(--blue); font-family: Georgia, "Times New Roman", serif; font
 .deck-card-copy p { overflow: hidden; margin: 0; color: #5b485f; font-size: 12px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
 .deck-card-image-dot { display: inline-block; width: 7px; height: 7px; margin-left: 5px; border-radius: 50%; background: #ab68b7; }
 .flashcard-study-shell { width: min(760px, 100%); margin: 0 auto; text-align: center; }
+.flashcard-title-row { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; vertical-align: middle; }
+.flipped-badge { display: inline-flex; align-items: center; padding: 6px 10px; color: #7a2b8f; border: 1px solid #e0b8ec; border-radius: 999px; background: #fbf0fd; font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; box-shadow: 0 2px 8px rgba(122,43,143,.09); }
+.flashcard-study-topline .eyebrow.flipped-mode { color: #7a2b8f; }
+.study-card.flipped-mode { border-color: #e0b8ec; background: linear-gradient(145deg, #fff, #fdf6ff); }
+.study-card.flipped-mode .study-side-label { color: #8d4da8; }
 .flashcard-progress { min-width: 64px; color: #745e7c; font-size: 12px; font-weight: 800; text-align: right; }
 .study-card { display: grid; gap: 22px; min-height: 405px; padding: 34px; color: #4f3d55; border: 1px solid #d8cae1; border-radius: 24px; background: linear-gradient(145deg, #fff, #fbf8fe); box-shadow: 0 20px 50px rgba(91, 51, 105, .12); cursor: pointer; text-align: left; }
 .study-card:focus-visible { outline: 3px solid rgba(152, 84, 169, .35); outline-offset: 4px; }

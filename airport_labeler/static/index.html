@@ -587,6 +587,7 @@
                 <option value="hard">Hard</option>
               </select>
               <button class="button button-flashcards" id="startDeckStudyBtn" type="button">Start review <span aria-hidden="true">→</span></button>
+              <button class="button button-secondary" id="startFlippedDeckStudyBtn" type="button" title="Show answers first and recall the questions">Start flipped review <span aria-hidden="true">↔</span></button>
               <button class="button button-secondary" id="addCardBtn" type="button">Add card</button>
             </div>
           </section>
@@ -606,8 +607,11 @@
         <section class="screen hidden" id="flashcardStudyScreen" aria-labelledby="flashcardStudyTitle">
           <div class="game-topline flashcard-study-topline">
             <div>
-              <p class="eyebrow flashcards-eyebrow">FLASHCARD REVIEW</p>
-              <h1 id="flashcardStudyTitle">Deck review</h1>
+              <p class="eyebrow flashcards-eyebrow" id="flashcardStudyEyebrow">FLASHCARD REVIEW</p>
+              <div class="flashcard-title-row">
+                <h1 id="flashcardStudyTitle">Deck review</h1>
+                <span class="flipped-badge hidden" id="flippedBadge">FLIPPED · answer → question</span>
+              </div>
             </div>
             <div class="game-topline-actions">
               <span class="flashcard-progress" id="flashcardStudyProgress">0 / 0</span>
@@ -618,12 +622,12 @@
           <div class="flashcard-study-shell">
             <article class="study-card" id="studyCard" tabindex="0">
               <div class="study-card-side study-card-question">
-                <span class="study-side-label">QUESTION</span>
+                <span class="study-side-label" id="studyQuestionLabel">QUESTION</span>
                 <p id="studyQuestionText"></p>
                 <img id="studyQuestionImage" class="study-card-image hidden" alt="Question visual" />
               </div>
               <div class="study-card-answer hidden" id="studyAnswerPanel">
-                <span class="study-side-label">ANSWER</span>
+                <span class="study-side-label" id="studyAnswerLabel">ANSWER</span>
                 <p id="studyAnswerText"></p>
                 <img id="studyAnswerImage" class="study-card-image hidden" alt="Answer visual" />
               </div>
