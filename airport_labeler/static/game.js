@@ -33,14 +33,14 @@
     },
     yyc: {
       key: "yyc",
-      canvas: { width: 550, height: 701 },
-      image: "/assets/yyc_ground_blank.png",
+      canvas: { width: 657, height: 727 },
+      image: "/assets/ground_sort_blank_new.png",
       referenceImage: "/assets/yyc_ground_filled.png",
       referenceTitle: "YYC Ground Sort answer key",
       referenceCopy: "Study the filled YYC sector diagram, then locate the named point on the blank diagram and classify who may use it.",
       eyebrow: "YYC GROUND SORT",
       title: "YYC Ground Sort Program",
-      mapCaption: "First click the matching blank point label. Then answer the Jets / Props follow-up question.",
+      mapCaption: "First click the matching blank point label. Points with an aircraft-use classification then ask a Jets / Props follow-up; corner fixes such as ADVOX are location-only.",
       instruction: "Click the named YYC point",
       answerPath: "/api/yyc-ground/answer-point",
       hintPath: "/api/yyc-ground/hint",
@@ -104,7 +104,7 @@
     yyc: {
       key: "yyc",
       canvas: GAME_MODES.yyc.canvas,
-      image: "/assets/yyc_ground_blank.png",
+      image: "/assets/ground_sort_blank_new.png",
       eyebrow: "YYC GROUND SORT VALIDATION",
       title: "Review the saved point",
       previewLabel: "CURRENT SAVED GROUND POINT",
@@ -1000,7 +1000,7 @@
     $("validationQuestionClue").textContent = current.clue || "Find the matching marker on the chart.";
     $("validationSourceValue").textContent = current.configured_answer.source_label;
     $("validationYycUseField").classList.toggle("hidden", config.key !== "yyc");
-    if (config.key === "yyc") $("validationYycUse").value = current.configured_answer.use || "Jets";
+    if (config.key === "yyc") $("validationYycUse").value = current.configured_answer.use || "";
     $("validationProgressText").textContent = `Review ${reviewNumber} of ${validation.question_total}`;
     $("validationRemainingText").textContent = `${validation.remaining_count} ${validation.remaining_count === 1 ? config.reviewNoun : plural} to review`;
     $("validationProgressFill").style.width = `${(validation.reviewed_count / validation.question_total) * 100}%`;
@@ -1349,7 +1349,7 @@
     $("validationDetailClue").value = current.clue || "";
     const yycDetails = activeValidationMode === "yyc";
     $("validationYycUseField").classList.toggle("hidden", !yycDetails);
-    if (yycDetails) $("validationYycUse").value = (current.configured_answer && current.configured_answer.use) || "Jets";
+    if (yycDetails) $("validationYycUse").value = (current.configured_answer && current.configured_answer.use) || "";
     questionDetailsModal.classList.remove("hidden");
     window.setTimeout(() => $("validationDetailLabel").focus(), 30);
   }

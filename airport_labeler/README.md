@@ -56,15 +56,20 @@ sector diagrams.
 - First locate the named blank point on the YYC Ground Sort diagram.
 - After the point is identified, answer **Who can use this point?** with **Jets**,
   **Props**, or **Jets or Props**.
-- A point is completed only after both the location and aircraft-use answers are
-  correct. An error at either step returns it to the randomized queue.
+- A point with an aircraft-use classification is completed only after both the
+  location and aircraft-use answers are correct. An error at either step returns
+  it to the randomized queue.
+- Location-only points (the ADVOX, BIRKO, EBGAL, and IGVEP corner fixes) ask no
+  follow-up: a correct click on the blank label completes them immediately.
 - The mode has its own per-user progress, retry graph, and YYC Ground Sort trends.
 - **Validate ground points** provides the same review, full-screen redraw, question
   editing, skip, and custom-point workflow as the other airport modes. It also lets
-  validators change the Jets/Props classification for each point.
+  validators change the Jets/Props classification for each point, or mark a point
+  as location-only with the *No follow-up* option.
 
 The supplied YYC answer key is stored as `assets/yyc_ground_filled.png`; the blank
-exercise canvas is `assets/yyc_ground_blank.png`.
+exercise canvas is `assets/ground_sort_blank_new.png` (the earlier diagram is kept
+as `assets/yyc_ground_blank.png`).
 
 ## Apron Ops
 
@@ -179,7 +184,8 @@ airport_labeler/
 │   ├── airport_labelled.png   # Main labelled route reference
 │   ├── locations_blank.png    # Supplied blank locations chart
 │   ├── locations_labelled.png # Supplied labelled locations reference
-│   ├── yyc_ground_blank.png   # YYC Ground Sort blank diagram
+│   ├── yyc_ground_blank.png   # Earlier YYC Ground Sort blank diagram
+│   ├── ground_sort_blank_new.png # Current YYC Ground Sort blank canvas (19 labels)
 │   └── yyc_ground_filled.png  # YYC Ground Sort answer key
 ├── static/
 │   ├── index.html

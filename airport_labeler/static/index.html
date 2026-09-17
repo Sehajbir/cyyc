@@ -185,7 +185,7 @@
               <div>
                 <p class="eyebrow">YYC GROUND SORT</p>
                 <h2 id="yycGroundModeTitle">YYC Ground Sort Program</h2>
-                <p>Locate each YYC ground point on the sector map, then decide whether it can be used by Jets, Props, or either.</p>
+                <p>Locate each YYC ground point on the sector map, then decide whether it can be used by Jets, Props, or either. Corner fixes such as ADVOX, BIRKO, EBGAL, and IGVEP are location-only.</p>
               </div>
             </div>
             <div class="yyc-ground-strip-actions">
@@ -961,8 +961,9 @@
             <textarea id="validationDetailClue" maxlength="220" rows="4" placeholder="Describe where the route is on the chart"></textarea>
           </label>
           <label class="yyc-use-field hidden" id="validationYycUseField">
-            <span>WHO CAN USE THIS POINT? <b>*</b></span>
+            <span>WHO CAN USE THIS POINT?</span>
             <select id="validationYycUse">
+              <option value="">No follow-up (location only)</option>
               <option value="Jets">Jets</option>
               <option value="Props">Props</option>
               <option value="Jets or Props">Jets or Props</option>
@@ -1096,8 +1097,9 @@
           <input id="customQuestionClue" type="text" maxlength="220" placeholder="Describe where the route is on the chart" autocomplete="off" />
         </label>
         <label class="yyc-use-field hidden" id="routeEditorYycUseField">
-          <span>Who can use this point? <b>*</b></span>
+          <span>Who can use this point?</span>
           <select id="customYycUse">
+            <option value="">No follow-up (location only)</option>
             <option value="Jets">Jets</option>
             <option value="Props">Props</option>
             <option value="Jets or Props">Jets or Props</option>
