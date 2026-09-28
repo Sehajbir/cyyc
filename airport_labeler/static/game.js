@@ -128,6 +128,7 @@
     $("welcomeScreen"),
     $("menuScreen"),
     $("apronOpsScreen"),
+    $("scenarioScreen"),
     $("flashcardsScreen"),
     $("flashcardDeckScreen"),
     $("flashcardStudyScreen"),
@@ -1865,6 +1866,34 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Random Practice Scenario Generator
+  // ---------------------------------------------------------------------------
+  async function showScenario() {
+    try {
+      await pauseOpenSessions();
+      showScreen($("scenarioScreen"));
+      await generateScenario();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  async function generateScenario() {
+    try {
+      const scenario = await request("/api/scenario/random");
+      $("scenarioRunway").textContent = scenario.runway;
+      $("scenarioOperation").textContent = scenario.operation_type === "departure" ? "Departure" : "Arrival";
+      $("scenarioAircraft").textContent = scenario.aircraft_type;
+      $("scenarioParking").textContent = scenario.parking;
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Apron Ops Study Guide
+  // ---------------------------------------------------------------------------
   function openApronStudyGuide(initialTab = "gates") {
     const tabs = $("referenceTabs");
     tabs.classList.remove("hidden");
@@ -2775,6 +2804,9 @@
     $("apronStudyGuideBtn").addEventListener("click", () => openApronStudyGuide("gates"));
     $("apronViewRules17Btn").addEventListener("click", () => openApronStudyGuide("rules17"));
     $("apronViewRules35Btn").addEventListener("click", () => openApronStudyGuide("rules35"));
+    $("openScenarioBtn").addEventListener("click", showScenario);
+    $("newScenarioBtn").addEventListener("click", generateScenario);
+    $("scenarioHomeBtn").addEventListener("click", goHome);
     $("yycGroundBtn").addEventListener("click", startOrResumeYycGround);
     $("yycGroundValidationBtn").addEventListener("click", () => startOrResumeValidation("yyc"));
     $("yycGroundTrendsBtn").addEventListener("click", () => showTrends("yyc"));

@@ -418,6 +418,82 @@ def check_apron_ops_answer(question: dict[str, Any], answer: dict[str, Any]) -> 
         }
 
 
+# ---------------------------------------------------------------------------
+# Random practice scenario generator
+# ---------------------------------------------------------------------------
+
+SCENARIO_RUNWAYS = ["17L", "17R", "35L", "35R"]
+SCENARIO_OPERATION_TYPES = ["arrival", "departure"]
+SCENARIO_APRONS = ["Apron 3", "Apron 4", "Apron 5", "Apron 6", "Apron 7", "Apron 8", "Apron 9"]
+
+# All gate numbers belonging to "Gates at Apron 1"
+SCENARIO_GATE_NUMBERS: list[int] = (
+    list(range(1, 7))
+    + list(range(11, 25))
+    + list(range(31, 41))
+    + list(range(50, 60))
+    + list(range(70, 77))
+    + list(range(78, 93))
+    + list(range(94, 98))
+)
+
+# Narrow-body / medium
+# Wide-body / heavy
+# Regional / general aviation (AGN)
+# AGN types that regularly operate at CYYC
+SCENARIO_AIRCRAFT_TYPES: list[str] = [
+    # Narrow-body
+    "A321",
+    "B737",
+    "B757",
+    # Wide-body
+    "B767",
+    "A300",
+    "A310",
+    "A330",
+    "A340",
+    "B747",
+    "B777",
+    "B787",
+    "B748",
+    "A380",
+    "AN124",
+    "MD11",
+    "DC10",
+    # Regional / AGN — aircraft that operate from CYYC
+    "DH8D",   # De Havilland Dash 8-400 (WestJet Encore, Air Canada Express)
+    "DH8C",   # De Havilland Dash 8-300 (Central Mountain Air)
+    "CRJ9",   # Bombardier CRJ-900 (Air Canada Express / Jazz)
+    "E195",   # Embraer E195 (Porter Airlines)
+    "B190",   # Beechcraft 1900D (Central Mountain Air, charter)
+    "AT72",   # ATR 72 (Canadian North)
+    "AT45",   # ATR 42-500 (Canadian North, Cargojet)
+    "SW4",    # Swearingen Metro (cargo feeder / charter)
+    "BE20",   # Beechcraft King Air 200 (charter, air ambulance)
+    "BE30",   # Beechcraft King Air 300 (charter, cargo)
+]
+
+
+def generate_random_scenario() -> dict[str, Any]:
+    """Pick a random runway, arrival/departure, parking location, and aircraft type."""
+    rng = random.SystemRandom()
+    runway = rng.choice(SCENARIO_RUNWAYS)
+    operation_type = rng.choice(SCENARIO_OPERATION_TYPES)
+
+    # Mix aprons and individual gates into one parking pool
+    parking_pool: list[str] = list(SCENARIO_APRONS) + [f"Gate {g}" for g in SCENARIO_GATE_NUMBERS]
+    parking = rng.choice(parking_pool)
+
+    aircraft_type = rng.choice(SCENARIO_AIRCRAFT_TYPES)
+
+    return {
+        "runway": runway,
+        "operation_type": operation_type,
+        "parking": parking,
+        "aircraft_type": aircraft_type,
+    }
+
+
 def public_apron_ops_question(q: dict[str, Any]) -> dict[str, Any]:
     """Strip secret answers for public client view."""
     return {

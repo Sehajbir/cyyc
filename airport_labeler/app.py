@@ -38,6 +38,7 @@ from apron_ops_data import (
     generate_apron_ops_session,
     check_apron_ops_answer,
     public_apron_ops_question,
+    generate_random_scenario,
     APRON_OPS_DEFAULT_COUNT,
 )
 from quizlet_import import QuizletImportError, normalise_quizlet_url, parse_quizlet_pdf
@@ -4175,6 +4176,9 @@ class AirportLabelHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/question-banks/export":
                 self._send_json(STORE.export_question_banks(self._request_user()))
+                return
+            if path == "/api/scenario/random":
+                self._send_json(generate_random_scenario())
                 return
             if path == "/api/locations/question-bank/export":
                 self._send_json(STORE.export_locations_question_bank(self._request_user()))
