@@ -373,6 +373,7 @@ h1 em { color: var(--blue); font-family: Georgia, "Times New Roman", serif; font
 .scenario-runway-card,
 .scenario-operation-card,
 .scenario-aircraft-card,
+.scenario-callsign-card,
 .scenario-parking-card {
   padding: 28px 24px;
   border-radius: var(--radius-lg);
@@ -397,6 +398,12 @@ h1 em { color: var(--blue); font-family: Georgia, "Times New Roman", serif; font
   box-shadow: 0 8px 28px rgba(140, 110, 20, 0.07);
 }
 .scenario-aircraft-card .scenario-hero-value { color: #6b5200; font-size: 36px; }
+.scenario-callsign-card {
+  border-color: #9ed2dc;
+  background: linear-gradient(155deg, #e4f7fb, #f3fcfe);
+  box-shadow: 0 8px 28px rgba(15, 120, 140, 0.07);
+}
+.scenario-callsign-card .scenario-hero-value { color: #0a5f6e; font-size: 30px; }
 .scenario-parking-card {
   border-color: #c8b0e0;
   background: linear-gradient(155deg, #f5eeff, #faf7fd);
@@ -418,6 +425,15 @@ h1 em { color: var(--blue); font-family: Georgia, "Times New Roman", serif; font
   letter-spacing: -0.03em;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
+}
+.scenario-hero-sub {
+  display: block;
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  color: #6a7f8f;
+  text-transform: uppercase;
 }
 .scenario-actions {
   display: flex;
@@ -829,6 +845,7 @@ tbody tr:last-child td { border-bottom: 0; }
   .bank-tools-status { text-align: left; }
   .scenario-hero { max-width: 100%; }
   .scenario-runway-card .scenario-hero-value { font-size: 40px; }
+  .scenario-callsign-card .scenario-hero-value { font-size: 26px; }
   .game-topline { align-items: flex-start; }
   .game-layout { grid-template-columns: 1fr; }
   .validation-review-layout { grid-template-columns: 1fr; }
@@ -887,6 +904,7 @@ tbody tr:last-child td { border-bottom: 0; }
   .scenario-runway-card .scenario-hero-value { font-size: 44px; }
   .scenario-aircraft-card .scenario-hero-value,
   .scenario-operation-card .scenario-hero-value { font-size: 30px; }
+  .scenario-callsign-card .scenario-hero-value { font-size: 26px; }
   .scenario-parking-card .scenario-hero-value { font-size: 26px; }
   .flashcard-image-field { flex-direction: column; }
   .flashcard-image-preview { width: 100%; height: auto; max-height: 180px; }

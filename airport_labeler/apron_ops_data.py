@@ -473,9 +473,155 @@ SCENARIO_AIRCRAFT_TYPES: list[str] = [
     "BE30",   # Beechcraft King Air 300 (charter, cargo)
 ]
 
+# Radio callsign generation. Each aircraft type is mapped to the operators that
+# actually fly it out of CYYC, along with their ICAO designator, radiotelephony
+# callsign, and realistic flight-number ranges, so a generated callsign always
+# pairs the aircraft type with a plausible YYC operator.
+#
+# Tuple layout: (operator name, ICAO code, radiotelephony callsign,
+#                [(low, high) flight-number ranges])
+ScenarioOperator = tuple[str, str, str, list[tuple[int, int]]]
+
+SCENARIO_AIRCRAFT_OPERATORS: dict[str, list[ScenarioOperator]] = {
+    # Narrow-body
+    "A321": [
+        ("Air Canada", "ACA", "Air Canada", [(100, 899)]),
+        ("Air Canada Rouge", "ROU", "Rouge", [(1500, 1899)]),
+        ("Air Transat", "TSC", "Transat", [(100, 749)]),
+    ],
+    "B737": [
+        ("WestJet", "WJA", "WestJet", [(100, 999)]),
+        ("Canadian North", "MPE", "Empress", [(300, 899)]),
+        ("Flair Airlines", "FLE", "Flair", [(100, 899)]),
+        ("Nolinor Aviation", "NRL", "Nolinor", [(700, 999)]),
+    ],
+    "B757": [
+        ("Cargojet Airways", "CJT", "Cargojet", [(600, 799)]),
+        ("FedEx", "FDX", "FedEx", [(1000, 4999)]),
+        ("UPS", "UPS", "UPS", [(2000, 2999)]),
+    ],
+    # Wide-body
+    "B767": [
+        ("Cargojet Airways", "CJT", "Cargojet", [(600, 799)]),
+        ("UPS", "UPS", "UPS", [(2000, 2999)]),
+        ("FedEx", "FDX", "FedEx", [(1000, 4999)]),
+    ],
+    "A300": [
+        ("FedEx", "FDX", "FedEx", [(1000, 4999)]),
+        ("UPS", "UPS", "UPS", [(2000, 2999)]),
+    ],
+    "A310": [
+        ("Air Transat", "TSC", "Transat", [(100, 749)]),
+    ],
+    "A330": [
+        ("Condor", "CFG", "Condor", [(1000, 2999)]),
+        ("Air Transat", "TSC", "Transat", [(100, 749)]),
+        ("KLM", "KLM", "KLM", [(600, 700)]),
+    ],
+    "A340": [
+        ("Edelweiss Air", "EDW", "Edelweiss", [(20, 99)]),
+    ],
+    "B747": [
+        ("Atlas Air", "GTI", "Atlas", [(100, 999)]),
+        ("Kalitta Air", "CKS", "Kalitta", [(400, 999)]),
+    ],
+    "B777": [
+        ("Emirates", "UAE", "Emirates", [(200, 250)]),
+        ("Air Canada", "ACA", "Air Canada", [(800, 899)]),
+    ],
+    "B787": [
+        ("Air Canada", "ACA", "Air Canada", [(800, 899)]),
+        ("British Airways", "BAW", "Speedbird", [(100, 299)]),
+        ("Air New Zealand", "ANZ", "New Zealand", [(80, 99)]),
+    ],
+    "B748": [
+        ("UPS", "UPS", "UPS", [(2000, 2999)]),
+        ("Atlas Air", "GTI", "Atlas", [(100, 999)]),
+    ],
+    "A380": [
+        ("Emirates", "UAE", "Emirates", [(200, 250)]),
+    ],
+    "AN124": [
+        ("Antonov Airlines", "ADB", "Ruslan", [(100, 899)]),
+        ("Volga-Dnepr Airlines", "VDA", "Volga Dnepr", [(100, 999)]),
+    ],
+    "MD11": [
+        ("FedEx", "FDX", "FedEx", [(1000, 4999)]),
+        ("UPS", "UPS", "UPS", [(2000, 2999)]),
+    ],
+    "DC10": [
+        ("Kelowna Flightcraft", "KFA", "Kelowna", [(700, 799)]),
+    ],
+    # Regional / AGN
+    "DH8D": [
+        ("WestJet Encore", "WSG", "Encore", [(3100, 3599)]),
+    ],
+    "DH8C": [
+        ("Central Mountain Air", "GLR", "Glacier", [(100, 999)]),
+    ],
+    "CRJ9": [
+        ("Air Canada Express / Jazz", "JZA", "Jazz", [(7000, 7999)]),
+        ("Air Canada Express", "ACA", "Air Canada", [(7000, 7999)]),
+    ],
+    "E195": [
+        ("Porter Airlines", "POE", "Porter", [(300, 999)]),
+    ],
+    "B190": [
+        ("Central Mountain Air", "GLR", "Glacier", [(100, 999)]),
+    ],
+    "AT72": [
+        ("Canadian North", "MPE", "Empress", [(300, 899)]),
+    ],
+    "AT45": [
+        ("Canadian North", "MPE", "Empress", [(300, 899)]),
+        ("Cargojet Airways", "CJT", "Cargojet", [(600, 799)]),
+    ],
+    "SW4": [
+        ("Carson Air", "CVL", "Carson", [(100, 899)]),
+    ],
+    "BE20": [
+        ("Sunwest Aviation", "CNK", "Chinock", [(100, 499)]),
+        ("Carson Air", "CVL", "Carson", [(100, 899)]),
+    ],
+    "BE30": [
+        ("Sunwest Aviation", "CNK", "Chinock", [(100, 499)]),
+        ("Carson Air", "CVL", "Carson", [(100, 899)]),
+    ],
+}
+
+
+def _generate_scenario_callsign(rng: random.SystemRandom, aircraft_type: str) -> dict[str, str]:
+    """Build a callsign that fits the aircraft type and a YYC operator.
+
+    Scheduled and charter traffic gets the operator's radiotelephony callsign
+    plus a realistic flight number (spoken form, e.g. "WestJet 437", plus the
+    ICAO flight-strip form, e.g. "WJA437"). Anything without a mapped operator
+    falls back to a Canadian registration-style callsign, as used by private
+    and corporate traffic.
+    """
+    operators = SCENARIO_AIRCRAFT_OPERATORS.get(aircraft_type)
+    if not operators:
+        prefix = rng.choice(("C-F", "C-G"))
+        letters = "".join(rng.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ") for _ in range(3))
+        registration = f"{prefix}{letters}"
+        return {
+            "operator": "Private / corporate",
+            "callsign": registration,
+            "icao_callsign": registration,
+        }
+
+    name, icao_code, telephony, number_ranges = rng.choice(operators)
+    low, high = rng.choice(number_ranges)
+    flight_number = rng.randint(low, high)
+    return {
+        "operator": name,
+        "callsign": f"{telephony} {flight_number}",
+        "icao_callsign": f"{icao_code}{flight_number}",
+    }
+
 
 def generate_random_scenario() -> dict[str, Any]:
-    """Pick a random runway, arrival/departure, parking location, and aircraft type."""
+    """Pick a random runway, arrival/departure, parking location, aircraft type, and callsign."""
     rng = random.SystemRandom()
     runway = rng.choice(SCENARIO_RUNWAYS)
     operation_type = rng.choice(SCENARIO_OPERATION_TYPES)
@@ -485,12 +631,16 @@ def generate_random_scenario() -> dict[str, Any]:
     parking = rng.choice(parking_pool)
 
     aircraft_type = rng.choice(SCENARIO_AIRCRAFT_TYPES)
+    callsign = _generate_scenario_callsign(rng, aircraft_type)
 
     return {
         "runway": runway,
         "operation_type": operation_type,
         "parking": parking,
         "aircraft_type": aircraft_type,
+        "operator": callsign["operator"],
+        "callsign": callsign["callsign"],
+        "icao_callsign": callsign["icao_callsign"],
     }
 
 

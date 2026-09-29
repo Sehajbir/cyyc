@@ -1885,6 +1885,8 @@
       $("scenarioRunway").textContent = scenario.runway;
       $("scenarioOperation").textContent = scenario.operation_type === "departure" ? "Departure" : "Arrival";
       $("scenarioAircraft").textContent = scenario.aircraft_type;
+      $("scenarioCallsign").textContent = scenario.callsign || "—";
+      $("scenarioOperator").textContent = scenario.operator || "—";
       $("scenarioParking").textContent = scenario.parking;
     } catch (error) {
       showToast(error.message, "error");
