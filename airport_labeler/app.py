@@ -42,6 +42,7 @@ from apron_ops_data import (
     APRON_OPS_DEFAULT_COUNT,
 )
 from quizlet_import import QuizletImportError, normalise_quizlet_url, parse_quizlet_pdf
+from lesson_pdf import LessonPDFError, analyse_lesson_pdf, normalise_stored_toc
 
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
@@ -56,6 +57,13 @@ FLASHCARD_STATES = {"new", "easy", "mid", "hard"}
 FLASHCARD_IMAGE_PATTERN = re.compile(r"^data:image/(?:png|jpeg|jpg|webp|gif);base64,([A-Za-z0-9+/=]+)$", re.IGNORECASE)
 QUIZLET_PDF_PATTERN = re.compile(r"^data:application/(?:pdf|octet-stream);base64,([A-Za-z0-9+/=]+)$", re.IGNORECASE)
 QUIZLET_PDF_MAX_BYTES = 15_000_000
+LESSON_PDF_PATTERN = re.compile(r"^data:application/(?:pdf|octet-stream);base64,([A-Za-z0-9+/=]+)$", re.IGNORECASE)
+# Lesson PDFs travel inside the same bounded JSON envelope as every other API
+# call (50 MB). Base64 inflates uploads by ~33%, so 30 MB of raw PDF is safe.
+LESSON_PDF_MAX_BYTES = 30_000_000
+LESSON_ID_PATTERN = re.compile(r"^les_[0-9a-f]{12}$")
+MAX_LESSONS = 200
+LESSONS_DIR = DATA_DIR / "lessons"
 
 
 class APIError(Exception):
@@ -222,12 +230,14 @@ class GameStore:
             "last_locations_validation": None,
             "last_yyc_ground_validation": None,
             "flashcard_decks": [],
+            # Study-mode reading position per shared lesson: {lesson_id: {...}}.
+            "lesson_progress": {},
         }
 
     @staticmethod
     def _empty_memory() -> dict[str, Any]:
         return {
-            "schema_version": 11,
+            "schema_version": 12,
             # Profiles hold user-specific game progress, trends, and validation
             # drafts. The bank configuration below is shared by every user.
             "users": {},
@@ -243,7 +253,9 @@ class GameStore:
             # Imported bank snapshots replace these sources globally when present.
             "question_bank_override": None,
             "location_bank_override": None,
-            "yyc_ground_bank_override": None
+            "yyc_ground_bank_override": None,
+            # Study-mode lessons are shared; each profile tracks its own page.
+            "lessons": [],
         }
 
     @staticmethod
@@ -299,6 +311,25 @@ class GameStore:
         for dict_key in ("question_stats", "location_question_stats", "yyc_ground_question_stats", "gates_question_stats", "apron_ops_question_stats", "apron_ops_question_stats"):
             if not isinstance(profile[dict_key], dict):
                 profile[dict_key] = {}
+        if not isinstance(profile.get("lesson_progress"), dict):
+            profile["lesson_progress"] = {}
+        else:
+            # Drop malformed reading positions rather than breaking the profile.
+            cleaned_progress: dict[str, Any] = {}
+            for lesson_id, entry in profile["lesson_progress"].items():
+                if not isinstance(lesson_id, str) or not LESSON_ID_PATTERN.match(lesson_id):
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+                page = entry.get("page")
+                if not isinstance(page, int) or isinstance(page, bool) or page < 1:
+                    continue
+                cleaned_progress[lesson_id] = {
+                    "page": page,
+                    "updated_at": entry.get("updated_at"),
+                    "page_count": entry.get("page_count"),
+                }
+            profile["lesson_progress"] = cleaned_progress
         if profile["active_game"] is not None and not isinstance(profile["active_game"], dict):
             profile["active_game"] = None
         if profile["active_locations_game"] is not None and not isinstance(profile["active_locations_game"], dict):
@@ -378,6 +409,7 @@ class GameStore:
             memory["question_bank_override"] = loaded.get("question_bank_override")
             memory["location_bank_override"] = loaded.get("location_bank_override")
             memory["yyc_ground_bank_override"] = loaded.get("yyc_ground_bank_override")
+            memory["lessons"] = loaded.get("lessons", [])
             if self._legacy_has_user_data(loaded):
                 memory["users"]["guest"] = self._legacy_profile(loaded)
         else:
@@ -394,6 +426,7 @@ class GameStore:
             memory["question_bank_override"] = loaded.get("question_bank_override")
             memory["location_bank_override"] = loaded.get("location_bank_override")
             memory["yyc_ground_bank_override"] = loaded.get("yyc_ground_bank_override")
+            memory["lessons"] = loaded.get("lessons", [])
             for stored_key, raw_profile in loaded["users"].items():
                 profile = self._normalise_loaded_profile(raw_profile, str(stored_key))
                 if not profile:
@@ -403,7 +436,8 @@ class GameStore:
                 # retain the first profile rather than merging unrelated histories.
                 memory["users"].setdefault(key, profile)
 
-        memory["schema_version"] = 11
+        memory["schema_version"] = 12
+        memory["lessons"] = self._normalise_stored_lessons(memory.get("lessons"))
         if not isinstance(memory["route_overrides"], dict):
             memory["route_overrides"] = {}
         if not isinstance(memory["question_overrides"], dict):
@@ -1268,6 +1302,8 @@ class GameStore:
                 "yyc_ground_question_override_count": len(self.memory.get("yyc_ground_question_overrides", {})),
                 "yyc_ground_custom_question_count": len(self._yyc_ground_questions()) - len(self._yyc_ground_base_questions()),
                 "flashcard_deck_count": len(profile.get("flashcard_decks", [])),
+                "lesson_count": len(self.memory.get("lessons", [])),
+                "lessons_in_progress": len(profile.get("lesson_progress", {})),
             },
             "question_total": len(self._all_questions()),
             "locations_question_total": len(self._locations_source_questions()),
@@ -3425,6 +3461,9 @@ class GameStore:
         for list_key in ("custom_questions", "location_custom_questions", "yyc_ground_custom_questions"):
             if not isinstance(memory[list_key], list):
                 raise APIError(f"Backup field {list_key} is invalid.")
+        # Lesson metadata is portable; the PDF files themselves live next to the
+        # save file and are simply flagged missing when a backup moves hosts.
+        memory["lessons"] = self._normalise_stored_lessons(document.get("lessons", []))
         for bank_key in ("question_bank_override", "location_bank_override", "yyc_ground_bank_override"):
             if memory[bank_key] is not None and not isinstance(memory[bank_key], list):
                 raise APIError(f"Backup field {bank_key} is invalid.")
@@ -3481,7 +3520,7 @@ class GameStore:
             if key in memory["users"]:
                 raise APIError("The backup contains duplicate user names.")
             memory["users"][key] = profile
-        memory["schema_version"] = 11
+        memory["schema_version"] = 12
         return memory
 
     def import_full_data(self, raw_username: Any, raw_data: Any) -> dict[str, Any]:
@@ -4082,6 +4121,403 @@ class GameStore:
             deck = self._flashcard_deck_by_id(profile, deck_id)
             return {"deck": self._public_flashcard_deck(deck), "stats": self._flashcard_deck_stats(deck)}
 
+    # ------------------------------------------------------------------
+    # Study-mode lessons (shared PDFs, per-user reading position)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _normalise_lesson_record(raw: Any) -> dict[str, Any] | None:
+        """Tolerantly validate one stored lesson; return None when unusable."""
+        if not isinstance(raw, dict):
+            return None
+        lesson_id = raw.get("id")
+        if not isinstance(lesson_id, str) or not LESSON_ID_PATTERN.match(lesson_id):
+            return None
+        title = raw.get("title")
+        if not isinstance(title, str):
+            return None
+        title = " ".join(title.strip().split())
+        if not title or len(title) > 100:
+            return None
+        filename = raw.get("filename")
+        if not isinstance(filename, str) or not filename.strip():
+            filename = f"{lesson_id}.pdf"
+        filename = filename.strip()[:255]
+        page_count = raw.get("page_count")
+        if not isinstance(page_count, int) or isinstance(page_count, bool):
+            return None
+        if not 1 <= page_count <= 2000:
+            return None
+        file_size = raw.get("file_size", 0)
+        if not isinstance(file_size, int) or isinstance(file_size, bool) or file_size < 0:
+            file_size = 0
+        toc_source = raw.get("toc_source", "none")
+        if toc_source not in {"outline", "headings", "none"}:
+            toc_source = "none"
+        toc = normalise_stored_toc(raw.get("toc"))
+        toc = [entry for entry in toc if entry["page"] <= page_count]
+        if not toc:
+            toc_source = "none"
+        return {
+            "id": lesson_id,
+            "title": title,
+            "filename": filename,
+            "page_count": page_count,
+            "file_size": file_size,
+            "toc": toc,
+            "toc_source": toc_source,
+            "toc_partial": bool(raw.get("toc_partial", False)),
+            "created_at": raw.get("created_at"),
+            "created_by": raw.get("created_by"),
+        }
+
+    @classmethod
+    def _normalise_stored_lessons(cls, raw: Any) -> list[dict[str, Any]]:
+        if not isinstance(raw, list):
+            return []
+        lessons: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in raw[:MAX_LESSONS]:
+            lesson = cls._normalise_lesson_record(item)
+            if lesson and lesson["id"] not in seen:
+                seen.add(lesson["id"])
+                lessons.append(lesson)
+        lessons.sort(key=lambda item: (item.get("created_at") or "", item["title"].casefold()))
+        return lessons
+
+    @staticmethod
+    def _lesson_pdf_path(lesson_id: str) -> Path:
+        if not LESSON_ID_PATTERN.match(lesson_id or ""):
+            raise APIError("This lesson is no longer available.", HTTPStatus.NOT_FOUND)
+        return LESSONS_DIR / f"{lesson_id}.pdf"
+
+    def _lesson_by_id(self, lesson_id: str) -> dict[str, Any]:
+        for lesson in self.memory.get("lessons", []):
+            if lesson.get("id") == lesson_id:
+                return lesson
+        raise APIError("This lesson is no longer available.", HTTPStatus.NOT_FOUND)
+
+    @staticmethod
+    def _decode_lesson_pdf(value: Any) -> bytes:
+        if not isinstance(value, str) or not value:
+            raise APIError("Attach the lesson PDF to continue.")
+        if len(value) > LESSON_PDF_MAX_BYTES * 4 // 3 + 64:
+            raise APIError("That PDF is larger than the 30 MB lesson limit.")
+        match = LESSON_PDF_PATTERN.match(value)
+        if not match:
+            raise APIError("The uploaded file must be a PDF.")
+        try:
+            decoded = base64.b64decode(match.group(1), validate=True)
+        except (ValueError, base64.binascii.Error) as error:
+            raise APIError("The uploaded PDF could not be decoded.") from error
+        if len(decoded) > LESSON_PDF_MAX_BYTES:
+            raise APIError("That PDF is larger than the 30 MB lesson limit.")
+        if b"%PDF" not in decoded[:1024]:
+            raise APIError("The uploaded file is not a PDF document.")
+        return decoded
+
+    @staticmethod
+    def _cleaned_pdf_filename(value: Any) -> str:
+        name = value if isinstance(value, str) else ""
+        name = name.strip().replace("\\", "/").split("/")[-1].strip()
+        name = " ".join(name.split())
+        if not name:
+            return "lesson.pdf"
+        if not name.lower().endswith(".pdf"):
+            name = f"{name}.pdf"
+        return name[:120]
+
+    def _analyse_lesson_upload(self, pdf_bytes: bytes, filename: str) -> dict[str, Any]:
+        try:
+            return analyse_lesson_pdf(pdf_bytes, filename)
+        except LessonPDFError as error:
+            raise APIError(str(error)) from error
+        except Exception as error:  # pragma: no cover - defensive parser boundary
+            print(f"Lesson PDF parse failure: {error!r}")
+            raise APIError("That PDF could not be read. Try exporting it again without encryption.") from error
+
+    def _lesson_progress_view(self, profile: dict[str, Any], lesson: dict[str, Any]) -> dict[str, Any]:
+        entry = profile.get("lesson_progress", {}).get(lesson["id"])
+        page = 1
+        updated_at = None
+        if isinstance(entry, dict) and isinstance(entry.get("page"), int):
+            page = max(1, min(int(entry["page"]), lesson["page_count"]))
+            updated_at = entry.get("updated_at")
+        return {"page": page, "updated_at": updated_at, "page_count": lesson["page_count"]}
+
+    def _public_lesson(self, lesson: dict[str, Any], profile: dict[str, Any], include_toc: bool = False) -> dict[str, Any]:
+        progress = self._lesson_progress_view(profile, lesson)
+        payload: dict[str, Any] = {
+            "id": lesson["id"],
+            "title": lesson["title"],
+            "filename": lesson["filename"],
+            "page_count": lesson["page_count"],
+            "file_size": lesson.get("file_size", 0),
+            "created_at": lesson.get("created_at"),
+            "created_by": lesson.get("created_by"),
+            "toc_source": lesson.get("toc_source", "none"),
+            "toc_partial": bool(lesson.get("toc_partial", False)),
+            "toc_count": len(lesson.get("toc", [])),
+            "pdf_available": self._lesson_pdf_path(lesson["id"]).is_file(),
+            "last_page": progress["page"],
+            "progress_updated_at": progress["updated_at"],
+            "started": progress["updated_at"] is not None,
+            "pdf_url": f"/api/lessons/{lesson['id']}/pdf",
+        }
+        if include_toc:
+            payload["toc"] = deepcopy(lesson.get("toc", []))
+        return payload
+
+    def lessons(self, raw_username: Any) -> dict[str, Any]:
+        with self.lock:
+            _, profile = self._profile(raw_username, create=True)
+            items = [self._public_lesson(lesson, profile) for lesson in self.memory.get("lessons", [])]
+            return {"lessons": items}
+
+    def scan_lesson_pdf(self, filename_value: Any, pdf_value: Any) -> dict[str, Any]:
+        """Read an upload in memory and suggest a lesson name (nothing is saved).
+
+        Parsing runs outside the store lock: it is CPU-bound and touches no
+        shared state, so concurrent scans never block game scoring.
+        """
+        filename = self._cleaned_pdf_filename(filename_value)
+        pdf_bytes = self._decode_lesson_pdf(pdf_value)
+        try:
+            analysis = self._analyse_lesson_upload(pdf_bytes, filename)
+        finally:
+            del pdf_bytes
+        return {
+            "filename": filename,
+            "suggested_title": analysis["suggested_title"],
+            "title_source": analysis["title_source"],
+            "page_count": analysis["page_count"],
+            "toc_source": analysis["toc_source"],
+            "toc_partial": analysis["toc_partial"],
+            "toc_count": len(analysis["toc"]),
+            "excerpt": analysis["excerpt"],
+        }
+
+    def create_lesson(self, raw_username: Any, payload: dict[str, Any]) -> dict[str, Any]:
+        title = cleaned_text(payload.get("title"), "Lesson name", 100)
+        filename = self._cleaned_pdf_filename(payload.get("filename"))
+        pdf_bytes = self._decode_lesson_pdf(payload.get("pdf"))
+        analysis = self._analyse_lesson_upload(pdf_bytes, filename)
+        with self.lock:
+            key, profile = self._profile(raw_username, create=True)
+            existing_titles = {str(item.get("title", "")).casefold() for item in self.memory.get("lessons", [])}
+            if title.casefold() in existing_titles:
+                raise APIError("A lesson with that name already exists. Choose a distinct name.")
+            if len(self.memory.get("lessons", [])) >= MAX_LESSONS:
+                raise APIError(f"The library already holds the maximum of {MAX_LESSONS} lessons.")
+            lesson_id = f"les_{uuid.uuid4().hex[:12]}"
+            target = self._lesson_pdf_path(lesson_id)
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                descriptor, temp_name = tempfile.mkstemp(prefix=".lesson_", suffix=".pdf", dir=target.parent)
+                try:
+                    with os.fdopen(descriptor, "wb") as file:
+                        file.write(pdf_bytes)
+                        file.flush()
+                        os.fsync(file.fileno())
+                    os.replace(temp_name, target)
+                finally:
+                    try:
+                        if os.path.exists(temp_name):
+                            os.unlink(temp_name)
+                    except OSError:
+                        pass
+            finally:
+                del pdf_bytes
+            now = utc_now()
+            lesson = {
+                "id": lesson_id,
+                "title": title,
+                "filename": filename,
+                "page_count": analysis["page_count"],
+                "file_size": target.stat().st_size,
+                "toc": analysis["toc"],
+                "toc_source": analysis["toc_source"],
+                "toc_partial": analysis["toc_partial"],
+                "created_at": now,
+                "created_by": profile["display_name"],
+            }
+            self.memory.setdefault("lessons", []).append(lesson)
+            self._touch(profile)
+            self._save()
+            return {"lesson": self._public_lesson(lesson, profile, include_toc=True), "state": self._memory_snapshot(key, profile)}
+
+    def lesson_detail(self, raw_username: Any, lesson_id: str) -> dict[str, Any]:
+        with self.lock:
+            _, profile = self._profile(raw_username, create=True)
+            lesson = self._lesson_by_id(lesson_id)
+            deck = self._lesson_deck(profile, lesson, adopt_title_match=False)
+            return {
+                "lesson": self._public_lesson(lesson, profile, include_toc=True),
+                "progress": self._lesson_progress_view(profile, lesson),
+                "deck": self._public_flashcard_deck(deck, include_cards=True) if deck else None,
+            }
+
+    def lesson_pdf_bytes(self, lesson_id: str) -> tuple[bytes, str]:
+        with self.lock:
+            lesson = self._lesson_by_id(lesson_id)
+            target = self._lesson_pdf_path(lesson_id)
+            try:
+                data = target.read_bytes()
+            except OSError as error:
+                raise APIError("The PDF for this lesson is missing. Re-attach it from the lesson library.", HTTPStatus.NOT_FOUND) from error
+            return data, lesson.get("filename") or f"{lesson_id}.pdf"
+
+    def save_lesson_progress(self, raw_username: Any, lesson_id: str, page_value: Any) -> dict[str, Any]:
+        with self.lock:
+            _, profile = self._profile(raw_username, create=True)
+            lesson = self._lesson_by_id(lesson_id)
+            try:
+                page = int(page_value)
+            except (TypeError, ValueError) as error:
+                raise APIError("Choose a valid page number.") from error
+            page = max(1, min(page, lesson["page_count"]))
+            entry = {"page": page, "updated_at": utc_now(), "page_count": lesson["page_count"]}
+            profile.setdefault("lesson_progress", {})[lesson_id] = entry
+            self._touch(profile)
+            self._save()
+            return {"progress": dict(entry)}
+
+    def rename_lesson(self, raw_username: Any, lesson_id: str, title_value: Any) -> dict[str, Any]:
+        title = cleaned_text(title_value, "Lesson name", 100)
+        with self.lock:
+            key, profile = self._profile(raw_username, create=True)
+            lesson = self._lesson_by_id(lesson_id)
+            for other in self.memory.get("lessons", []):
+                if other["id"] != lesson_id and str(other.get("title", "")).casefold() == title.casefold():
+                    raise APIError("A lesson with that name already exists. Choose a distinct name.")
+            lesson["title"] = title
+            self._touch(profile)
+            self._save()
+            return {"lesson": self._public_lesson(lesson, profile, include_toc=True), "state": self._memory_snapshot(key, profile)}
+
+    def attach_lesson_pdf(self, raw_username: Any, lesson_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Replace (or restore) the PDF behind an existing lesson record."""
+        filename = self._cleaned_pdf_filename(payload.get("filename"))
+        pdf_bytes = self._decode_lesson_pdf(payload.get("pdf"))
+        analysis = self._analyse_lesson_upload(pdf_bytes, filename)
+        with self.lock:
+            key, profile = self._profile(raw_username, create=True)
+            lesson = self._lesson_by_id(lesson_id)
+            target = self._lesson_pdf_path(lesson_id)
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                descriptor, temp_name = tempfile.mkstemp(prefix=".lesson_", suffix=".pdf", dir=target.parent)
+                try:
+                    with os.fdopen(descriptor, "wb") as file:
+                        file.write(pdf_bytes)
+                        file.flush()
+                        os.fsync(file.fileno())
+                    os.replace(temp_name, target)
+                finally:
+                    try:
+                        if os.path.exists(temp_name):
+                            os.unlink(temp_name)
+                    except OSError:
+                        pass
+            finally:
+                del pdf_bytes
+            lesson["filename"] = filename
+            lesson["page_count"] = analysis["page_count"]
+            lesson["file_size"] = target.stat().st_size
+            lesson["toc"] = analysis["toc"]
+            lesson["toc_source"] = analysis["toc_source"]
+            lesson["toc_partial"] = analysis["toc_partial"]
+            # Clamp every reader's saved page to the replacement document.
+            for other_profile in self.memory["users"].values():
+                entry = other_profile.get("lesson_progress", {}).get(lesson_id)
+                if isinstance(entry, dict) and isinstance(entry.get("page"), int):
+                    entry["page"] = max(1, min(entry["page"], analysis["page_count"]))
+                    entry["page_count"] = analysis["page_count"]
+            self._touch(profile)
+            self._save()
+            return {"lesson": self._public_lesson(lesson, profile, include_toc=True), "state": self._memory_snapshot(key, profile)}
+
+    def delete_lesson(self, raw_username: Any, lesson_id: str) -> dict[str, Any]:
+        with self.lock:
+            key, profile = self._profile(raw_username, create=True)
+            lesson = self._lesson_by_id(lesson_id)
+            self.memory["lessons"] = [item for item in self.memory.get("lessons", []) if item.get("id") != lesson_id]
+            for other_profile in self.memory["users"].values():
+                progress = other_profile.get("lesson_progress", {})
+                if lesson_id in progress:
+                    del progress[lesson_id]
+            try:
+                self._lesson_pdf_path(lesson_id).unlink(missing_ok=True)
+            except OSError:
+                pass
+            self._touch(profile)
+            self._save()
+            return {"deleted": True, "title": lesson.get("title", "Lesson"), "state": self._memory_snapshot(key, profile)}
+
+    def _lesson_deck(self, profile: dict[str, Any], lesson: dict[str, Any], adopt_title_match: bool = True) -> dict[str, Any] | None:
+        """Find the user's flashcard deck linked to a lesson.
+
+        Decks created from study mode are stamped with the lesson id so the
+        link survives renames. A same-named deck the user made by hand is
+        adopted on first use so cards land where the reader expects them.
+        """
+        decks = profile.get("flashcard_decks", [])
+        for deck in decks:
+            source = deck.get("source") or {}
+            if isinstance(source, dict) and source.get("type") == "lesson" and source.get("lesson_id") == lesson["id"]:
+                return deck
+        if not adopt_title_match:
+            return None
+        for deck in decks:
+            if str(deck.get("title", "")).casefold() == lesson["title"].casefold():
+                source = dict(deck.get("source") or {})
+                source.update({"type": "lesson", "lesson_id": lesson["id"], "lesson_title": lesson["title"]})
+                deck["source"] = source
+                return deck
+        return None
+
+    def add_lesson_flashcard(self, raw_username: Any, lesson_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        question = self._flashcard_text(payload.get("question"), "Question")
+        answer = self._flashcard_text(payload.get("answer"), "Answer")
+        with self.lock:
+            key, profile = self._profile(raw_username, create=True)
+            lesson = self._lesson_by_id(lesson_id)
+            deck = self._lesson_deck(profile, lesson, adopt_title_match=True)
+            now = utc_now()
+            if deck is None:
+                if len(profile.get("flashcard_decks", [])) >= 500:
+                    raise APIError("This profile already has the maximum number of flashcard decks.")
+                deck = {
+                    "id": f"deck_{uuid.uuid4().hex[:12]}",
+                    "title": lesson["title"],
+                    "created_at": now,
+                    "updated_at": now,
+                    "study_sessions": 0,
+                    "source": {"type": "lesson", "lesson_id": lesson["id"], "lesson_title": lesson["title"]},
+                    "cards": [],
+                }
+                profile.setdefault("flashcard_decks", []).append(deck)
+            card = {
+                "id": f"card_{uuid.uuid4().hex[:12]}",
+                "question": question,
+                "answer": answer,
+                "question_image": None,
+                "answer_image": None,
+                "status": "new",
+                "review_count": 0,
+                "easy_count": 0,
+                "mid_count": 0,
+                "hard_count": 0,
+                "last_rating": None,
+                "last_reviewed_at": None,
+                "created_at": now,
+                "updated_at": now,
+            }
+            deck.setdefault("cards", []).append(card)
+            deck["updated_at"] = now
+            self._touch(profile)
+            self._save()
+            return {"card": self._public_flashcard(card), "deck": self._public_flashcard_deck(deck, include_cards=True), "state": self._memory_snapshot(key, profile)}
+
     def reset_user(self, raw_username: Any) -> dict[str, Any]:
         """Erase only one user's profile; never erase the shared validated bank."""
         with self.lock:
@@ -4113,6 +4549,19 @@ class AirportLabelHandler(BaseHTTPRequestHandler):
 
     def _send_error_json(self, message: str, status: int) -> None:
         self._send_json({"error": message}, status)
+
+    def _send_bytes(self, data: bytes, content_type: str, filename: str) -> None:
+        safe_name = "".join(char for char in filename if char.isprintable()).replace('"', "").strip() or "lesson.pdf"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        # A lesson PDF can be replaced under the same URL via re-attach, so it
+        # must never be cached; fragment (#page=) jumps never refetch anyway.
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Disposition", f'inline; filename="{safe_name}"')
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(data)
 
     def _read_json_body(self) -> dict[str, Any]:
         content_length = self.headers.get("Content-Length", "0")
@@ -4189,12 +4638,25 @@ class AirportLabelHandler(BaseHTTPRequestHandler):
             if path == "/api/flashcards/decks":
                 self._send_json(STORE.flashcard_decks(self._request_user()))
                 return
+            if path == "/api/lessons":
+                self._send_json(STORE.lessons(self._request_user()))
+                return
             parts = path.split("/")
             if len(parts) == 5 and parts[:4] == ["", "api", "flashcards", "decks"]:
                 self._send_json(STORE.flashcard_deck(self._request_user(), unquote(parts[4])))
                 return
             if len(parts) == 6 and parts[:4] == ["", "api", "flashcards", "decks"] and parts[5] == "stats":
                 self._send_json(STORE.flashcard_deck_stats(self._request_user(), unquote(parts[4])))
+                return
+            if len(parts) == 4 and parts[:3] == ["", "api", "lessons"]:
+                self._send_json(STORE.lesson_detail(self._request_user(), unquote(parts[3])))
+                return
+            if len(parts) == 5 and parts[:3] == ["", "api", "lessons"] and parts[4] == "pdf":
+                # The PDF viewer iframe issues this request without custom
+                # headers, so lesson files are served to anyone who knows the
+                # unguessable lesson id — same exposure as /assets diagrams.
+                data, filename = STORE.lesson_pdf_bytes(unquote(parts[3]))
+                self._send_bytes(data, "application/pdf", filename)
                 return
             self._serve_static(path)
         except APIError as error:
@@ -4220,6 +4682,20 @@ class AirportLabelHandler(BaseHTTPRequestHandler):
                     result = STORE.create_flashcard_deck(username, payload.get("title"))
                 elif path == "/api/flashcards/import/quizlet":
                     result = STORE.import_quizlet_deck(username, payload)
+                elif path == "/api/lessons/scan":
+                    result = STORE.scan_lesson_pdf(payload.get("filename"), payload.get("pdf"))
+                elif path == "/api/lessons":
+                    result = STORE.create_lesson(username, payload)
+                elif len(parts) == 5 and parts[:3] == ["", "api", "lessons"] and parts[4] == "progress":
+                    result = STORE.save_lesson_progress(username, unquote(parts[3]), payload.get("page"))
+                elif len(parts) == 5 and parts[:3] == ["", "api", "lessons"] and parts[4] == "rename":
+                    result = STORE.rename_lesson(username, unquote(parts[3]), payload.get("title"))
+                elif len(parts) == 5 and parts[:3] == ["", "api", "lessons"] and parts[4] == "attach":
+                    result = STORE.attach_lesson_pdf(username, unquote(parts[3]), payload)
+                elif len(parts) == 5 and parts[:3] == ["", "api", "lessons"] and parts[4] == "delete":
+                    result = STORE.delete_lesson(username, unquote(parts[3]))
+                elif len(parts) == 5 and parts[:3] == ["", "api", "lessons"] and parts[4] == "cards":
+                    result = STORE.add_lesson_flashcard(username, unquote(parts[3]), payload)
                 elif len(parts) == 6 and parts[:4] == ["", "api", "flashcards", "decks"] and parts[5] == "cards":
                     result = STORE.add_flashcard(username, unquote(parts[4]), payload)
                 elif len(parts) == 7 and parts[:4] == ["", "api", "flashcards", "decks"] and parts[5] == "cards":

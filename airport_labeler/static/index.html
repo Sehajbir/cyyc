@@ -263,6 +263,21 @@
             </div>
           </section>
 
+          <section class="study-strip" aria-labelledby="studyModeTitle">
+            <div class="study-strip-copy">
+              <span class="study-orb" aria-hidden="true">◧</span>
+              <div>
+                <p class="eyebrow">STUDY MODE</p>
+                <h2 id="studyModeTitle">Lesson library</h2>
+                <p>Upload lesson PDFs, jump through the table of contents, and turn key points into flashcards. Every reader's place is saved separately.</p>
+              </div>
+            </div>
+            <div class="study-strip-actions">
+              <button class="button button-study" id="studyModeBtn" type="button">Open study mode <span aria-hidden="true">→</span></button>
+              <p id="studyModeNote">Upload a lesson PDF to begin. The first page is scanned to suggest a lesson name.</p>
+            </div>
+          </section>
+
           <div class="memory-strip" id="memoryStrip">
             <div>
               <p class="eyebrow">SAVED MEMORY</p>
@@ -722,6 +737,109 @@
             </div>
             <div id="commonMistakesList"></div>
           </section>
+        </section>
+
+        <section class="screen hidden" id="lessonsScreen" aria-labelledby="lessonsTitle">
+          <div class="trends-heading lessons-heading">
+            <div>
+              <p class="eyebrow study-eyebrow">STUDY MODE</p>
+              <h1 id="lessonsTitle">Lesson library</h1>
+              <p>Upload lesson PDFs for the whole crew. The first page is scanned to suggest a lesson name, and each reader's place is remembered separately.</p>
+            </div>
+            <div class="lessons-heading-actions">
+              <button class="button button-study" id="uploadLessonBtn" type="button">Upload lesson <span aria-hidden="true">↑</span></button>
+              <button class="button button-secondary" id="lessonsHomeBtn" type="button">← Back home</button>
+            </div>
+          </div>
+
+          <div class="lesson-library" id="lessonLibrary" aria-live="polite"></div>
+        </section>
+
+        <section class="screen hidden study-screen" id="lessonStudyScreen" aria-labelledby="lessonStudyTitle">
+          <div class="study-topline">
+            <div class="study-title-wrap">
+              <p class="eyebrow study-eyebrow">STUDY MODE</p>
+              <div class="study-title-row">
+                <h1 id="lessonStudyTitle">Lesson</h1>
+                <button class="button button-quiet button-small" id="lessonRenameBtn" type="button">Rename</button>
+              </div>
+              <div class="study-rename-row hidden" id="lessonRenameRow">
+                <input id="lessonRenameInput" type="text" maxlength="100" autocomplete="off" aria-label="Lesson name" />
+                <button class="button button-study button-small" id="lessonRenameSaveBtn" type="button">Save</button>
+                <button class="button button-quiet button-small" id="lessonRenameCancelBtn" type="button">Cancel</button>
+              </div>
+              <p id="lessonStudyMeta"></p>
+            </div>
+            <div class="study-topline-actions">
+              <span class="study-page-badge" id="lessonPageBadge">Page 1 of 1</span>
+              <button class="button button-secondary" id="lessonLibraryBtn" type="button">← Library</button>
+            </div>
+          </div>
+
+          <div class="study-layout" id="studyLayout">
+            <aside class="study-toc" id="studyTocPanel" aria-label="Table of contents">
+              <div class="study-panel-head">
+                <div>
+                  <p class="eyebrow study-eyebrow">CONTENTS</p>
+                  <h2>Jump to a section</h2>
+                </div>
+                <button class="icon-button" id="collapseTocBtn" type="button" aria-label="Collapse table of contents" title="Collapse contents">«</button>
+              </div>
+              <input id="tocFilterInput" type="text" maxlength="80" placeholder="Filter sections…" autocomplete="off" aria-label="Filter sections" />
+              <div class="study-toc-list" id="studyTocList"></div>
+              <p class="study-toc-note" id="studyTocNote"></p>
+            </aside>
+            <button class="study-rail hidden" id="expandTocBtn" type="button" aria-label="Expand table of contents" title="Show contents">»</button>
+
+            <div class="study-viewer">
+              <div class="study-toolbar" role="toolbar" aria-label="Page navigation">
+                <button class="button button-secondary button-small" id="lessonPrevBtn" type="button">← Prev</button>
+                <label class="study-page-field">Page
+                  <input id="lessonPageInput" type="text" inputmode="numeric" autocomplete="off" aria-label="Current page" />
+                  <span>of <strong id="lessonPageTotal">1</strong></span>
+                </label>
+                <button class="button button-secondary button-small" id="lessonNextBtn" type="button">Next →</button>
+                <a class="study-pdf-link" id="lessonOpenPdfLink" href="#" target="_blank" rel="noopener noreferrer">Open PDF ↗</a>
+              </div>
+              <div class="progress-track study-progress-track" aria-hidden="true"><span id="studyProgressFill"></span></div>
+              <div class="study-frame-wrap">
+                <iframe id="lessonPdfViewer" title="Lesson PDF document"></iframe>
+                <div class="study-missing hidden" id="lessonMissingPdf">
+                  <div>
+                    <strong>PDF unavailable</strong>
+                    <p id="lessonMissingCopy">The file behind this lesson is missing. Re-attach the PDF to keep studying.</p>
+                    <button class="button button-study" id="lessonAttachBtn" type="button">Attach PDF</button>
+                  </div>
+                </div>
+              </div>
+              <p class="study-viewer-note">Your place saves automatically as you turn pages. If you scroll inside the document, type the page number above to sync your bookmark.</p>
+            </div>
+
+            <button class="study-rail hidden" id="expandCardsBtn" type="button" aria-label="Expand flashcards" title="Show flashcards">«</button>
+            <aside class="study-cards" id="studyCardsPanel" aria-label="Lesson flashcards">
+              <div class="study-panel-head">
+                <div>
+                  <p class="eyebrow study-eyebrow">FLASHCARDS</p>
+                  <h2 id="studyDeckTitle">Lesson deck</h2>
+                </div>
+                <button class="icon-button" id="collapseCardsBtn" type="button" aria-label="Collapse flashcards" title="Collapse flashcards">»</button>
+              </div>
+              <p class="study-deck-meta" id="studyDeckMeta"></p>
+              <div class="study-card-form">
+                <label>
+                  <span>QUESTION</span>
+                  <textarea id="studyCardQuestion" rows="2" maxlength="2000" placeholder="What should this card ask?"></textarea>
+                </label>
+                <label>
+                  <span>ANSWER</span>
+                  <textarea id="studyCardAnswer" rows="2" maxlength="2000" placeholder="What is the answer?"></textarea>
+                </label>
+                <button class="button button-study" id="studyAddCardBtn" type="button">Add card to deck</button>
+              </div>
+              <div class="study-card-list" id="studyCardList"></div>
+              <button class="button button-secondary study-open-deck" id="studyOpenDeckBtn" type="button">Open deck in Memory Studio</button>
+            </aside>
+          </div>
         </section>
 
         <section class="screen hidden" id="validationScreen" aria-labelledby="validationTitle">
@@ -1202,6 +1320,42 @@
         <button class="button button-quiet" id="routeEditorCancelBtn" type="button">Cancel</button>
         <button class="button button-secondary" id="routeEditorClearBtn" type="button">Clear drawing</button>
         <button class="button button-validation button-large" id="routeEditorSaveBtn" type="button" disabled>Save route &amp; continue <span aria-hidden="true">→</span></button>
+      </div>
+    </div>
+
+    <div class="modal hidden" id="lessonUploadModal" role="dialog" aria-modal="true" aria-labelledby="lessonUploadTitle">
+      <div class="modal-backdrop" data-close-lesson-upload="true"></div>
+      <div class="modal-card lesson-upload-card">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow study-eyebrow" id="lessonUploadEyebrow">NEW LESSON</p>
+            <h2 id="lessonUploadTitle">Upload lesson PDF</h2>
+          </div>
+          <button class="icon-button" id="closeLessonUploadBtn" type="button" aria-label="Close lesson upload">×</button>
+        </div>
+        <p class="modal-copy" id="lessonUploadCopy">Choose a PDF lesson. Its first page is scanned to suggest a lesson name, which stays editable before saving.</p>
+        <div class="flashcard-editor-fields">
+          <div class="flashcard-image-field">
+            <div>
+              <span>LESSON PDF <b>*</b></span>
+              <input id="lessonPdfInput" type="file" accept="application/pdf,.pdf" />
+              <p class="quizlet-pdf-hint" id="lessonPdfHint">No file chosen. PDFs up to 30 MB are accepted.</p>
+            </div>
+          </div>
+          <div class="lesson-name-block hidden" id="lessonNameBlock">
+            <label>
+              <span>LESSON NAME <b>*</b></span>
+              <input id="lessonNameInput" type="text" maxlength="100" autocomplete="off" placeholder="e.g., Apron pushback essentials" />
+            </label>
+            <p class="lesson-scan-meta" id="lessonScanMeta"></p>
+            <p class="lesson-excerpt" id="lessonExcerpt"></p>
+          </div>
+        </div>
+        <p class="flashcard-editor-status" id="lessonUploadStatus" aria-live="polite"></p>
+        <div class="question-details-actions">
+          <button class="button button-quiet" id="cancelLessonUploadBtn" type="button">Cancel</button>
+          <button class="button button-study" id="saveLessonBtn" type="button" disabled>Save lesson</button>
+        </div>
       </div>
     </div>
 

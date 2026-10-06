@@ -110,6 +110,18 @@ The server reads the PDF with its own dependency-free parser (`pdf_text.py` / `q
 
 Quizlet blocks automated browsers and this app intentionally ships with no headless browser, which is why the print page is saved by you rather than fetched by the server.
 
+## Study mode
+
+Choose **Lesson library** from the main menu to study uploaded lesson PDFs.
+
+- **Upload a lesson** with the Upload button. The PDF (up to 30 MB) is read once: the first page is scanned to suggest a lesson name — taken from the PDF title when present, otherwise from the largest first-page heading, otherwise from the file name. The suggested name stays editable before saving, and can be renamed later from the reader header.
+- The **table of contents** is built from the PDF's own bookmarks when it has them, and falls back to automatically detected headings (font size and bold titles) when it does not. It sits on the left of the reader; click any section to jump straight to its page.
+- **Your place is remembered per player.** Turning pages with the contents list, the Prev/Next controls, the page field, or the ←/→ arrow keys saves your bookmark automatically; reopening the lesson resumes where you left off. If you scroll inside the embedded document, type the page number to sync your bookmark.
+- The **flashcard panel** on the right adds cards directly into your flashcard decks under the lesson's name (a deck is created on the first card, or an existing same-named deck is reused). Cards already in the deck are listed below the quick-add form and can be edited in place; **Open deck in Memory Studio** jumps to the full review workflow.
+- Both side panels are **collapsible** with the « / » controls, and your layout choice is remembered in the browser.
+- Lessons are shared by every user, like the question banks; reading positions and flashcard decks stay private to each profile. Deleting a lesson removes the shared PDF and everyone's bookmarks but keeps the flashcard decks readers already made from it.
+- Lesson PDFs are stored as files in `data/lessons/` (or `$AIRPORT_LABELER_DATA_DIR/lessons` on deployments) so the JSON save file stays small. Full-data backups carry the lesson catalogue, contents, and bookmarks; if a backup is restored where the PDF files are absent, the affected lessons are flagged and the PDF can be re-attached from the library without losing bookmarks.
+
 ## Airport locations learning mode
 
 Choose **Learn airport locations** from the main menu to work with the supplied
@@ -155,7 +167,7 @@ All state is stored locally in:
 data/airport_labeler_memory.json
 ```
 
-The file contains independent player profiles (each with their own active route game, active locations lab, active YYC Ground Sort run, validation drafts, flashcard decks/cards/images, completed-session summaries, answer events, and performance statistics) plus shared route/marker/ground-point overrides, question-detail overrides, custom questions, custom location points, and imported bank snapshots. The app automatically pauses and saves when a user returns to the main menu or closes the page. Each user’s route, locations, and YYC Ground Sort trend screens include only that user’s own time/miss history.
+The file contains independent player profiles (each with their own active route game, active locations lab, active YYC Ground Sort run, validation drafts, flashcard decks/cards/images, study-mode reading positions, completed-session summaries, answer events, and performance statistics) plus shared route/marker/ground-point overrides, question-detail overrides, custom questions, custom location points, study-mode lesson records, and imported bank snapshots. Lesson PDFs themselves are stored as files in `data/lessons/`. The app automatically pauses and saves when a user returns to the main menu or closes the page. Each user’s route, locations, and YYC Ground Sort trend screens include only that user’s own time/miss history.
 
 For a deployed container, set `AIRPORT_LABELER_DATA_DIR` to a persistent mounted volume. The Dockerfile and `render.yaml` already do this; see `deploy-inst.txt` for the deployment steps.
 
@@ -171,6 +183,7 @@ airport_labeler/
 ├── yyc_ground_data.py         # YYC Ground Sort points and Jets/Props answers
 ├── pdf_text.py                # Dependency-free PDF text/table extraction
 ├── quizlet_import.py          # Quizlet print-PDF → term/definition card pairs
+├── lesson_pdf.py              # Study-mode title suggestion + table-of-contents extraction
 ├── questions.txt              # Supplied curated main question/answer list
 ├── question_bank_curated.json # JSON form parsed from questions.txt at project setup
 ├── Dockerfile                 # Production container image

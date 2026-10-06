@@ -133,6 +133,8 @@
     $("flashcardDeckScreen"),
     $("flashcardStudyScreen"),
     $("flashcardStatsScreen"),
+    $("lessonsScreen"),
+    $("lessonStudyScreen"),
     $("gameScreen"),
     $("validationScreen"),
     $("validationAddScreen"),
@@ -154,6 +156,7 @@
   const routeEditorModal = $("routeEditorModal");
   const questionDetailsModal = $("questionDetailsModal");
   const flashcardModal = $("flashcardModal");
+  const lessonUploadModal = $("lessonUploadModal");
   const quizletImportModal = $("quizletImportModal");
   const dataUpdateModal = $("dataUpdateModal");
   const toast = $("toast");
@@ -195,6 +198,20 @@
   let studyIndex = 0;
   let studyRevealed = false;
   let studyFlipped = false;
+
+  // Study-mode lesson state. Lessons are shared; the reading position and the
+  // linked flashcard deck belong to the current user profile on the server.
+  let studyLessons = [];
+  let currentLesson = null;
+  let currentLessonDeck = null;
+  let studyPage = 1;
+  let studySaveTimer = null;
+  let studyPendingPage = null;
+  let studyReturnAfterEdit = false;
+  let uploadDraftPdf = null;
+  let uploadDraftFilename = "";
+  let uploadAttachLessonId = null;
+  let uploadScanToken = 0;
 
   async function request(path, method = "GET", payload = undefined) {
     const options = { method, headers: {} };
@@ -393,6 +410,7 @@
   async function showWelcome() {
     closeRouteEditor(true);
     closeFlashcardEditor();
+    closeLessonUpload();
     closeQuizletImport();
     closeDataUpdate();
     closeQuestionDetails();
@@ -435,6 +453,7 @@
 
   async function switchUser() {
     try {
+      await flushLessonProgress();
       await pauseOpenSessions();
     } catch (error) {
       showToast(error.message, "error");
@@ -622,6 +641,13 @@
     $("flashcardsNote").textContent = deckCount
       ? `${deckCount} personal ${deckCount === 1 ? "deck" : "decks"} · recall ratings and difficult-card stats update as you study.`
       : "Create a deck, add New cards, then rate what you recall as Easy, Mid, or Hard.";
+
+    const lessonCount = history.lesson_count || 0;
+    const lessonsInProgress = history.lessons_in_progress || 0;
+    $("studyModeBtn").innerHTML = lessonCount ? `Open ${lessonCount} ${lessonCount === 1 ? "lesson" : "lessons"} <span aria-hidden="true">→</span>` : 'Open study mode <span aria-hidden="true">→</span>';
+    $("studyModeNote").textContent = lessonCount
+      ? `${lessonCount} shared ${lessonCount === 1 ? "lesson" : "lessons"}${lessonsInProgress ? ` · you have ${lessonsInProgress} in progress` : " · your reading place saves per lesson"}.`
+      : "Upload a lesson PDF to begin. The first page is scanned to suggest a lesson name.";
 
     const validationButton = $("validationBtn");
     const validationNote = $("validationNote");
@@ -1983,12 +2009,15 @@
     }
     closeRouteEditor(true);
     closeFlashcardEditor();
+    closeLessonUpload();
     closeDataUpdate();
     closeQuestionDetails();
     closeReference();
     clearHint();
     stopTimer();
+    studyReturnAfterEdit = false;
     try {
+      await flushLessonProgress();
       await pauseOpenSessions();
       state = await request("/api/state");
     } catch (error) {
@@ -2326,10 +2355,13 @@
   async function showFlashcards() {
     closeRouteEditor(true);
     closeQuestionDetails();
+    closeLessonUpload();
     closeReference();
     clearHint();
     stopTimer();
+    studyReturnAfterEdit = false;
     try {
+      await flushLessonProgress();
       await pauseOpenSessions();
       const result = await request("/api/flashcards/decks");
       renderDeckLibrary(result.decks || []);
@@ -2501,6 +2533,7 @@
   async function openFlashcardDeck(deckId) {
     if (!deckId) return showFlashcards();
     try {
+      await flushLessonProgress();
       const result = await request(`/api/flashcards/decks/${encodeURIComponent(deckId)}`);
       currentDeck = result.deck;
       currentDeckId = currentDeck.id;
@@ -2559,6 +2592,7 @@
     flashcardModal.classList.add("hidden");
     flashcardEditingId = null;
     flashcardDraftImages = { question: null, answer: null };
+    studyReturnAfterEdit = false;
   }
 
   async function handleFlashcardImageChange(side, event) {
@@ -2592,11 +2626,20 @@
       const result = await request(endpoint, "POST", payload);
       state = result.state;
       currentDeck = result.deck;
+      const returnToStudy = studyReturnAfterEdit;
       closeFlashcardEditor();
-      $("flashcardDeckTitle").textContent = currentDeck.title;
-      renderDeckSummary(currentDeck);
-      renderDeckCards(currentDeck.cards || []);
-      showToast(wasEditing ? "Card updated." : "New card added with New status.");
+      if (returnToStudy && currentLesson && currentLessonDeck && currentDeck.id === currentLessonDeck.id) {
+        currentLessonDeck = result.deck;
+        renderStudyDeck();
+        renderStudyHeader();
+        showScreen($("lessonStudyScreen"));
+        showToast(wasEditing ? "Card updated." : "New card added with New status.");
+      } else {
+        $("flashcardDeckTitle").textContent = currentDeck.title;
+        renderDeckSummary(currentDeck);
+        renderDeckCards(currentDeck.cards || []);
+        showToast(wasEditing ? "Card updated." : "New card added with New status.");
+      }
     } catch (error) {
       $("flashcardEditorStatus").textContent = error.message;
     } finally {
@@ -2740,6 +2783,588 @@
     }
   }
 
+  // Study-mode lessons
+  // ---------------------------------------------------------------------------
+  function formatFileSize(bytes) {
+    const value = Number(bytes) || 0;
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(value < 10240 ? 1 : 0)} KB`;
+    return `${(value / 1024 / 1024).toFixed(value < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+  }
+
+  function tocSourceLabel(source) {
+    if (source === "outline") return "PDF bookmarks";
+    if (source === "headings") return "detected headings";
+    return "no contents detected";
+  }
+
+  function studyPanelsKey() {
+    return "airportLabelQuest.studyPanels";
+  }
+
+  function applyStudyPanels() {
+    let collapsed = { toc: false, cards: false };
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(studyPanelsKey()) || "{}");
+      collapsed = { toc: Boolean(stored.toc), cards: Boolean(stored.cards) };
+    } catch (error) {
+      collapsed = { toc: false, cards: false };
+    }
+    const layout = $("studyLayout");
+    layout.classList.toggle("toc-collapsed", collapsed.toc);
+    layout.classList.toggle("cards-collapsed", collapsed.cards);
+    $("expandTocBtn").classList.toggle("hidden", !collapsed.toc);
+    $("expandCardsBtn").classList.toggle("hidden", !collapsed.cards);
+  }
+
+  function setStudyPanel(which, collapsed) {
+    const layout = $("studyLayout");
+    if (which === "toc") {
+      layout.classList.toggle("toc-collapsed", collapsed);
+      $("expandTocBtn").classList.toggle("hidden", !collapsed);
+    } else {
+      layout.classList.toggle("cards-collapsed", collapsed);
+      $("expandCardsBtn").classList.toggle("hidden", !collapsed);
+    }
+    try {
+      window.localStorage.setItem(studyPanelsKey(), JSON.stringify({
+        toc: layout.classList.contains("toc-collapsed"),
+        cards: layout.classList.contains("cards-collapsed"),
+      }));
+    } catch (error) {
+      // Panel preferences are a convenience; ignore storage failures.
+    }
+  }
+
+  async function flushLessonProgress() {
+    if (!currentLesson || studyPendingPage === null || !currentUser) return;
+    const lessonId = currentLesson.id;
+    const page = studyPendingPage;
+    studyPendingPage = null;
+    if (studySaveTimer) {
+      window.clearTimeout(studySaveTimer);
+      studySaveTimer = null;
+    }
+    try {
+      const result = await request(`/api/lessons/${encodeURIComponent(lessonId)}/progress`, "POST", { page });
+      if (currentLesson && currentLesson.id === lessonId) {
+        currentLesson.last_page = result.progress.page;
+        currentLesson.progress_updated_at = result.progress.updated_at;
+      }
+      const cached = studyLessons.find((item) => item.id === lessonId);
+      if (cached) {
+        cached.last_page = result.progress.page;
+        cached.progress_updated_at = result.progress.updated_at;
+      }
+    } catch (error) {
+      // The reader keeps studying; the next page turn retries the save.
+      studyPendingPage = page;
+    }
+  }
+
+  function scheduleLessonProgressSave() {
+    if (!currentLesson) return;
+    studyPendingPage = studyPage;
+    if (studySaveTimer) window.clearTimeout(studySaveTimer);
+    studySaveTimer = window.setTimeout(() => {
+      studySaveTimer = null;
+      flushLessonProgress();
+    }, 600);
+  }
+
+  async function showLessons() {
+    closeRouteEditor(true);
+    closeFlashcardEditor();
+    closeLessonUpload();
+    closeQuestionDetails();
+    closeReference();
+    clearHint();
+    stopTimer();
+    studyReturnAfterEdit = false;
+    try {
+      await flushLessonProgress();
+      await pauseOpenSessions();
+      const result = await request("/api/lessons");
+      studyLessons = result.lessons || [];
+      renderLessonLibrary();
+      showScreen($("lessonsScreen"));
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  function lessonProgressPercent(lesson) {
+    if (!lesson.page_count || !lesson.progress_updated_at) return 0;
+    return Math.max(0, Math.min(100, Math.round(((lesson.last_page || 1) / lesson.page_count) * 100)));
+  }
+
+  function renderLessonLibrary() {
+    const host = $("lessonLibrary");
+    if (!studyLessons.length) {
+      host.innerHTML = `<div class="lesson-library-empty"><div><strong>No lessons yet</strong><br />Upload a lesson PDF above. Its first page is scanned to suggest a name, and every reader's place is remembered.</div></div>`;
+      return;
+    }
+    host.innerHTML = studyLessons.map((lesson) => {
+      const started = Boolean(lesson.progress_updated_at);
+      const status = !lesson.pdf_available
+        ? "PDF missing — re-attach to study"
+        : (started ? `Your bookmark: page ${lesson.last_page} of ${lesson.page_count}` : `Not started · ${lesson.page_count} pages`);
+      return `<article class="lesson-tile">
+        <div><p class="eyebrow study-eyebrow">${escapeHTML(String(lesson.page_count))} PAGES · ${escapeHTML(tocSourceLabel(lesson.toc_source).toUpperCase())}</p>
+        <h2>${escapeHTML(lesson.title)}</h2></div>
+        <div class="lesson-tile-meta"><span>${escapeHTML(lesson.toc_count || 0)} sections</span><span>${escapeHTML(formatFileSize(lesson.file_size))}</span>${lesson.created_by ? `<span>Shared by ${escapeHTML(lesson.created_by)}</span>` : ""}</div>
+        ${lesson.pdf_available ? "" : '<div><span class="lesson-missing-flag">PDF MISSING</span></div>'}
+        <div class="lesson-tile-progress">
+          <div class="progress-track" aria-hidden="true"><span style="width: ${lessonProgressPercent(lesson)}%"></span></div>
+          <span>${escapeHTML(status)}</span>
+        </div>
+        <div class="lesson-tile-actions">
+          ${lesson.pdf_available ? `<button class="button button-study" data-lesson-study="${escapeHTML(lesson.id)}" type="button">${started ? "Resume" : "Study"} <span aria-hidden="true">→</span></button>` : `<button class="button button-study" data-lesson-attach="${escapeHTML(lesson.id)}" type="button">Attach PDF</button>`}
+          <button class="button button-quiet" data-lesson-delete="${escapeHTML(lesson.id)}" type="button">Delete</button>
+        </div>
+      </article>`;
+    }).join("");
+    host.querySelectorAll("[data-lesson-study]").forEach((button) => {
+      button.addEventListener("click", () => openLesson(button.dataset.lessonStudy));
+    });
+    host.querySelectorAll("[data-lesson-attach]").forEach((button) => {
+      button.addEventListener("click", () => openLessonUpload(button.dataset.lessonAttach));
+    });
+    host.querySelectorAll("[data-lesson-delete]").forEach((button) => {
+      button.addEventListener("click", () => deleteLesson(button.dataset.lessonDelete));
+    });
+  }
+
+  async function deleteLesson(lessonId) {
+    const lesson = studyLessons.find((item) => item.id === lessonId);
+    const title = lesson ? lesson.title : "this lesson";
+    if (!window.confirm(`Delete “${title}”? The shared PDF, its table of contents, and every reader's bookmark are removed. Flashcard decks you made from it are kept.`)) return;
+    try {
+      const result = await request(`/api/lessons/${encodeURIComponent(lessonId)}/delete`, "POST", {});
+      state = result.state;
+      if (currentLesson && currentLesson.id === lessonId) {
+        currentLesson = null;
+        currentLessonDeck = null;
+      }
+      showToast(`Deleted ${result.title || title}.`);
+      await showLessons();
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
+  function setLessonUploadStatus(message, isError = false) {
+    const node = $("lessonUploadStatus");
+    node.textContent = message || "";
+    node.classList.toggle("error", Boolean(isError));
+  }
+
+  function openLessonUpload(attachLessonId = null) {
+    uploadDraftPdf = null;
+    uploadDraftFilename = "";
+    uploadAttachLessonId = attachLessonId;
+    uploadScanToken += 1;
+    $("lessonPdfInput").value = "";
+    $("lessonPdfHint").textContent = "No file chosen. PDFs up to 30 MB are accepted.";
+    $("lessonNameInput").value = "";
+    $("lessonNameBlock").classList.add("hidden");
+    $("lessonScanMeta").textContent = "";
+    $("lessonExcerpt").textContent = "";
+    $("lessonExcerpt").classList.add("hidden");
+    setLessonUploadStatus("");
+    $("saveLessonBtn").disabled = true;
+    if (attachLessonId) {
+      const lesson = studyLessons.find((item) => item.id === attachLessonId)
+        || (currentLesson && currentLesson.id === attachLessonId ? currentLesson : null);
+      $("lessonUploadEyebrow").textContent = "RESTORE LESSON";
+      $("lessonUploadTitle").textContent = lesson ? `Attach PDF for “${lesson.title}”` : "Attach lesson PDF";
+      $("lessonUploadCopy").textContent = "Choose the replacement PDF. Its pages and table of contents are re-read, and every reader's bookmark is kept inside the new page range.";
+      $("saveLessonBtn").innerHTML = "Attach PDF";
+    } else {
+      $("lessonUploadEyebrow").textContent = "NEW LESSON";
+      $("lessonUploadTitle").textContent = "Upload lesson PDF";
+      $("lessonUploadCopy").textContent = "Choose a PDF lesson. Its first page is scanned to suggest a lesson name, which stays editable before saving.";
+      $("saveLessonBtn").innerHTML = "Save lesson";
+    }
+    lessonUploadModal.classList.remove("hidden");
+  }
+
+  function closeLessonUpload() {
+    if (!lessonUploadModal || lessonUploadModal.classList.contains("hidden")) return;
+    if ($("saveLessonBtn").disabled && uploadDraftPdf) return; // scan or save in progress
+    uploadScanToken += 1;
+    uploadDraftPdf = null;
+    uploadDraftFilename = "";
+    uploadAttachLessonId = null;
+    lessonUploadModal.classList.add("hidden");
+  }
+
+  async function handleLessonFileChange(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") {
+      setLessonUploadStatus("The lesson file must be a PDF.", true);
+      return;
+    }
+    if (file.size > 30 * 1024 * 1024) {
+      setLessonUploadStatus("That PDF is over the 30 MB lesson limit.", true);
+      return;
+    }
+    $("lessonPdfHint").textContent = `${file.name} (${formatFileSize(file.size)}) ready to scan.`;
+    uploadDraftFilename = file.name;
+    // Allow picking the same file again after a failed scan or a re-upload.
+    event.target.value = "";
+    setLessonUploadStatus("Scanning the first page…");
+    $("saveLessonBtn").disabled = true;
+    $("lessonNameBlock").classList.add("hidden");
+    const token = ++uploadScanToken;
+    try {
+      uploadDraftPdf = await readFileAsDataUrl(file);
+    } catch (error) {
+      if (token !== uploadScanToken) return;
+      setLessonUploadStatus("The PDF could not be read from disk.", true);
+      return;
+    }
+    if (token !== uploadScanToken) return;
+    try {
+      let pdf = uploadDraftPdf;
+      if (!/^data:application\/pdf;base64,/i.test(pdf)) {
+        pdf = `data:application/pdf;base64,${pdf.split(",")[1] || ""}`;
+        uploadDraftPdf = pdf;
+      }
+      const result = await request("/api/lessons/scan", "POST", { filename: file.name, pdf });
+      if (token !== uploadScanToken) return;
+      const tocBits = result.toc_source === "none"
+        ? "no table of contents detected"
+        : `${result.toc_count} ${result.toc_source === "outline" ? "bookmark" : "detected-heading"} ${result.toc_count === 1 ? "section" : "sections"}`;
+      const titleHint = result.title_source === "pdf"
+        ? "Suggested from the PDF title"
+        : (result.title_source === "first_page" ? "Suggested from the first page" : "Taken from the file name");
+      if (uploadAttachLessonId) {
+        $("lessonNameBlock").classList.remove("hidden");
+        $("lessonNameInput").value = "";
+        $("lessonNameInput").closest("label").classList.add("hidden");
+        $("lessonScanMeta").textContent = `${result.page_count} pages · ${tocBits}.`;
+      } else {
+        $("lessonNameInput").closest("label").classList.remove("hidden");
+        $("lessonNameBlock").classList.remove("hidden");
+        $("lessonNameInput").value = result.suggested_title || "";
+        $("lessonScanMeta").textContent = `${titleHint} — edit freely · ${result.page_count} pages · ${tocBits}.`;
+      }
+      if (result.excerpt) {
+        $("lessonExcerpt").textContent = `“${result.excerpt}”`;
+        $("lessonExcerpt").classList.remove("hidden");
+      } else {
+        $("lessonExcerpt").classList.add("hidden");
+      }
+      setLessonUploadStatus(uploadAttachLessonId ? "PDF scanned. Attach it to restore this lesson." : "First page scanned. Review the editable lesson name, then save.");
+      $("saveLessonBtn").disabled = false;
+      if (!uploadAttachLessonId) window.setTimeout(() => $("lessonNameInput").focus(), 30);
+    } catch (error) {
+      if (token !== uploadScanToken) return;
+      uploadDraftPdf = null;
+      setLessonUploadStatus(error.message, true);
+    }
+  }
+
+  async function saveLessonUpload() {
+    if (!uploadDraftPdf) {
+      setLessonUploadStatus("Choose a PDF to scan first.", true);
+      return;
+    }
+    const button = $("saveLessonBtn");
+    button.disabled = true;
+    setLessonUploadStatus(uploadAttachLessonId ? "Attaching the PDF…" : "Saving the lesson…");
+    try {
+      if (uploadAttachLessonId) {
+        const result = await request(`/api/lessons/${encodeURIComponent(uploadAttachLessonId)}/attach`, "POST", {
+          filename: uploadDraftFilename,
+          pdf: uploadDraftPdf,
+        });
+        state = result.state;
+        const lessonId = uploadAttachLessonId;
+        button.disabled = false;
+        closeLessonUpload();
+        showToast(`Restored the PDF for ${result.lesson.title}.`);
+        if (currentLesson && currentLesson.id === lessonId && !$("lessonStudyScreen").classList.contains("hidden")) {
+          await openLesson(lessonId, { silentResume: true });
+        } else {
+          await showLessons();
+        }
+        return;
+      }
+      const title = $("lessonNameInput").value.trim();
+      if (!title) {
+        setLessonUploadStatus("Give the lesson a name before saving.", true);
+        $("lessonNameInput").focus();
+        button.disabled = false;
+        return;
+      }
+      const result = await request("/api/lessons", "POST", {
+        filename: uploadDraftFilename,
+        pdf: uploadDraftPdf,
+        title,
+      });
+      state = result.state;
+      button.disabled = false;
+      closeLessonUpload();
+      showToast(`Saved ${result.lesson.title}.`);
+      await showLessons();
+    } catch (error) {
+      setLessonUploadStatus(error.message, true);
+      button.disabled = false;
+    }
+  }
+
+  async function openLesson(lessonId, options = {}) {
+    closeRouteEditor(true);
+    closeFlashcardEditor();
+    closeLessonUpload();
+    closeQuestionDetails();
+    closeReference();
+    clearHint();
+    stopTimer();
+    studyReturnAfterEdit = false;
+    try {
+      await flushLessonProgress();
+      await pauseOpenSessions();
+      const result = await request(`/api/lessons/${encodeURIComponent(lessonId)}`);
+      currentLesson = result.lesson;
+      currentLessonDeck = result.deck || null;
+      if (currentLessonDeck) {
+        currentDeckId = currentLessonDeck.id;
+        currentDeck = currentLessonDeck;
+      }
+      studyPage = Math.max(1, Math.min(result.progress.page || 1, currentLesson.page_count));
+      studyPendingPage = null;
+      $("tocFilterInput").value = "";
+      cancelLessonRename(true);
+      applyStudyPanels();
+      renderStudyHeader();
+      renderStudyToc({ initial: true });
+      renderStudyDeck();
+      gotoStudyPage(studyPage, { initial: true });
+      showScreen($("lessonStudyScreen"));
+      if (!options.silentResume && result.progress.updated_at && studyPage > 1) {
+        showToast(`Resumed “${currentLesson.title}” at page ${studyPage}.`);
+      }
+    } catch (error) {
+      showToast(error.message, "error");
+      await showLessons();
+    }
+  }
+
+  function renderStudyHeader() {
+    if (!currentLesson) return;
+    $("lessonStudyTitle").textContent = currentLesson.title;
+    const bits = [`${currentLesson.page_count} pages`];
+    bits.push(currentLesson.toc_count ? `${currentLesson.toc_count} sections · ${tocSourceLabel(currentLesson.toc_source)}` : "no table of contents");
+    if (currentLesson.created_by) bits.push(`shared by ${currentLesson.created_by}`);
+    const deckCount = currentLessonDeck && currentLessonDeck.stats ? currentLessonDeck.stats.card_count || 0 : 0;
+    bits.push(deckCount ? `${deckCount} flashcards` : "no flashcards yet");
+    $("lessonStudyMeta").textContent = bits.join(" · ");
+    $("lessonOpenPdfLink").href = currentLesson.pdf_url;
+    const missing = !currentLesson.pdf_available;
+    $("lessonPdfViewer").classList.toggle("hidden", missing);
+    $("lessonMissingPdf").classList.toggle("hidden", !missing);
+    $("lessonPrevBtn").disabled = missing;
+    $("lessonNextBtn").disabled = missing;
+    $("lessonPageInput").disabled = missing;
+  }
+
+  function studyTocEntries() {
+    const filter = $("tocFilterInput").value.trim().toLowerCase();
+    const entries = (currentLesson && currentLesson.toc) || [];
+    if (!filter) return entries;
+    return entries.filter((entry) => entry.title.toLowerCase().includes(filter));
+  }
+
+  function renderStudyToc(options = {}) {
+    const host = $("studyTocList");
+    const entries = studyTocEntries();
+    const total = (currentLesson && currentLesson.toc) || [];
+    if (!total.length) {
+      host.innerHTML = `<div class="study-toc-empty">No table of contents was found in this PDF.<br />Use the page controls to read through it.</div>`;
+    } else if (!entries.length) {
+      host.innerHTML = `<div class="study-toc-empty">No sections match this filter.</div>`;
+    } else {
+      host.innerHTML = entries.map((entry) => `<button class="study-toc-entry" data-toc-page="${entry.page}" type="button" style="padding-left: ${9 + Math.min(entry.level || 0, 5) * 14}px">
+        <span>${escapeHTML(entry.title)}</span><span class="toc-page">p. ${entry.page}</span>
+      </button>`).join("");
+      host.querySelectorAll("[data-toc-page]").forEach((button) => {
+        button.addEventListener("click", () => gotoStudyPage(Number(button.dataset.tocPage)));
+      });
+    }
+    const note = $("studyTocNote");
+    if (!total.length) {
+      note.textContent = "";
+    } else if (currentLesson.toc_source === "headings") {
+      note.textContent = currentLesson.toc_partial
+        ? "Headings were detected from the first portion of a long document."
+        : "This PDF has no bookmarks, so headings were detected automatically.";
+    } else {
+      note.textContent = "Built from the PDF's own bookmarks.";
+    }
+    updateStudyNav(options);
+  }
+
+  function updateStudyNav(options = {}) {
+    if (!currentLesson) return;
+    const total = currentLesson.page_count;
+    $("lessonPageBadge").textContent = `Page ${studyPage} of ${total}`;
+    $("lessonPageTotal").textContent = String(total);
+    $("lessonOpenPdfLink").href = `${currentLesson.pdf_url}#page=${studyPage}`;
+    if (document.activeElement !== $("lessonPageInput")) {
+      $("lessonPageInput").value = String(studyPage);
+    }
+    $("lessonPrevBtn").disabled = !currentLesson.pdf_available || studyPage <= 1;
+    $("lessonNextBtn").disabled = !currentLesson.pdf_available || studyPage >= total;
+    $("studyProgressFill").style.width = `${Math.round((studyPage / total) * 100)}%`;
+    const buttons = Array.from($("studyTocList").querySelectorAll("[data-toc-page]"));
+    let active = null;
+    buttons.forEach((button) => {
+      const page = Number(button.dataset.tocPage);
+      const isActive = page <= studyPage && (!active || page >= Number(active.dataset.tocPage));
+      button.classList.toggle("active", false);
+      if (isActive) active = button;
+    });
+    if (active) {
+      active.classList.add("active");
+      if (!options.initial) active.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  function gotoStudyPage(rawPage, options = {}) {
+    if (!currentLesson || !currentLesson.pdf_available) return;
+    const total = currentLesson.page_count;
+    const page = Math.max(1, Math.min(total, Math.round(Number(rawPage) || 1)));
+    const viewer = $("lessonPdfViewer");
+    // Fragment-only navigation: the embedded viewer jumps without reloading,
+    // and comparing the target also catches switches between lessons.
+    const target = `${currentLesson.pdf_url}#page=${page}`;
+    if (viewer.getAttribute("src") !== target) {
+      viewer.setAttribute("src", target);
+    }
+    if (page !== studyPage) {
+      studyPage = page;
+      scheduleLessonProgressSave();
+    }
+    updateStudyNav(options);
+  }
+
+  function renderStudyDeck() {
+    if (!currentLesson) return;
+    const deck = currentLessonDeck;
+    $("studyDeckTitle").textContent = deck ? deck.title : currentLesson.title;
+    const host = $("studyCardList");
+    if (!deck) {
+      $("studyDeckMeta").textContent = `No deck yet — your first card below creates “${currentLesson.title}” in your flashcard decks.`;
+      host.innerHTML = `<div class="study-card-empty">Cards you add while studying appear here and in Memory Studio.</div>`;
+      return;
+    }
+    const stats = deck.stats || {};
+    $("studyDeckMeta").textContent = `${stats.card_count || 0} cards · ${stats.new_count || 0} new · ${stats.easy_count || 0} easy · ${stats.mid_count || 0} mid · ${stats.hard_count || 0} hard`;
+    const cards = [...(deck.cards || [])].reverse();
+    if (!cards.length) {
+      host.innerHTML = `<div class="study-card-empty">No cards in this deck yet. Add the first one above.</div>`;
+      return;
+    }
+    host.innerHTML = cards.map((card) => `<article class="study-card-row">
+      <p class="study-card-q">${escapeHTML(card.question)}</p>
+      <p class="study-card-a">${escapeHTML(card.answer)}</p>
+      <div class="study-card-row-foot"><div>${flashcardStatePill(card.status)}</div><button class="button button-secondary button-small" data-study-edit-card="${escapeHTML(card.id)}" type="button">Edit</button></div>
+    </article>`).join("");
+    host.querySelectorAll("[data-study-edit-card]").forEach((button) => {
+      button.addEventListener("click", () => editStudyDeckCard(button.dataset.studyEditCard));
+    });
+  }
+
+  async function addStudyCard() {
+    if (!currentLesson) return;
+    const question = $("studyCardQuestion").value.trim();
+    const answer = $("studyCardAnswer").value.trim();
+    if (!question || !answer) {
+      showToast("Write both a question and an answer first.", "error");
+      (!question ? $("studyCardQuestion") : $("studyCardAnswer")).focus();
+      return;
+    }
+    const button = $("studyAddCardBtn");
+    button.disabled = true;
+    try {
+      const result = await request(`/api/lessons/${encodeURIComponent(currentLesson.id)}/cards`, "POST", { question, answer });
+      state = result.state;
+      currentLessonDeck = result.deck;
+      currentDeckId = result.deck.id;
+      currentDeck = result.deck;
+      $("studyCardQuestion").value = "";
+      $("studyCardAnswer").value = "";
+      renderStudyDeck();
+      renderStudyHeader();
+      showToast(`Added to “${result.deck.title}”.`);
+    } catch (error) {
+      showToast(error.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function editStudyDeckCard(cardId) {
+    if (!currentLessonDeck) return;
+    currentDeckId = currentLessonDeck.id;
+    currentDeck = currentLessonDeck;
+    studyReturnAfterEdit = true;
+    openFlashcardEditor(cardId);
+  }
+
+  async function openStudyDeckInStudio() {
+    if (!currentLessonDeck) {
+      showToast("Add your first card above to create this lesson's deck.", "error");
+      return;
+    }
+    await flushLessonProgress();
+    studyReturnAfterEdit = false;
+    await openFlashcardDeck(currentLessonDeck.id);
+  }
+
+  function startLessonRename() {
+    if (!currentLesson) return;
+    $("lessonRenameRow").classList.remove("hidden");
+    $("lessonRenameInput").value = currentLesson.title;
+    $("lessonRenameBtn").classList.add("hidden");
+    window.setTimeout(() => {
+      $("lessonRenameInput").focus();
+      $("lessonRenameInput").select();
+    }, 30);
+  }
+
+  function cancelLessonRename(silent = false) {
+    $("lessonRenameRow").classList.add("hidden");
+    $("lessonRenameBtn").classList.remove("hidden");
+    if (!silent) $("lessonRenameInput").value = "";
+  }
+
+  async function saveLessonRename() {
+    if (!currentLesson) return;
+    const title = $("lessonRenameInput").value.trim();
+    if (!title) {
+      showToast("Give the lesson a name first.", "error");
+      $("lessonRenameInput").focus();
+      return;
+    }
+    try {
+      const result = await request(`/api/lessons/${encodeURIComponent(currentLesson.id)}/rename`, "POST", { title });
+      state = result.state;
+      currentLesson = result.lesson;
+      const cached = studyLessons.find((item) => item.id === currentLesson.id);
+      if (cached) cached.title = currentLesson.title;
+      cancelLessonRename();
+      renderStudyHeader();
+      showToast(currentLessonDeck ? "Lesson renamed. Your flashcard deck keeps its name." : "Lesson renamed.");
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  }
+
   function bindEvents() {
     $("welcomeContinueBtn").addEventListener("click", () => selectUser());
     $("welcomeUsername").addEventListener("keydown", (event) => {
@@ -2793,6 +3418,42 @@
     $("removeQuestionImageBtn").addEventListener("click", () => { flashcardDraftImages.question = null; $("flashcardQuestionImageInput").value = ""; setFlashcardPreview("question"); });
     $("removeAnswerImageBtn").addEventListener("click", () => { flashcardDraftImages.answer = null; $("flashcardAnswerImageInput").value = ""; setFlashcardPreview("answer"); });
     flashcardModal.addEventListener("click", (event) => { if (event.target.dataset.closeFlashcard) closeFlashcardEditor(); });
+    $("studyModeBtn").addEventListener("click", showLessons);
+    $("lessonsHomeBtn").addEventListener("click", goHome);
+    $("uploadLessonBtn").addEventListener("click", () => openLessonUpload());
+    $("closeLessonUploadBtn").addEventListener("click", closeLessonUpload);
+    $("cancelLessonUploadBtn").addEventListener("click", closeLessonUpload);
+    $("saveLessonBtn").addEventListener("click", saveLessonUpload);
+    $("lessonPdfInput").addEventListener("change", handleLessonFileChange);
+    $("lessonNameInput").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); saveLessonUpload(); }
+    });
+    lessonUploadModal.addEventListener("click", (event) => { if (event.target.dataset.closeLessonUpload) closeLessonUpload(); });
+    $("lessonLibraryBtn").addEventListener("click", showLessons);
+    $("lessonPrevBtn").addEventListener("click", () => gotoStudyPage(studyPage - 1));
+    $("lessonNextBtn").addEventListener("click", () => gotoStudyPage(studyPage + 1));
+    $("lessonPageInput").addEventListener("change", (event) => {
+      gotoStudyPage(Number(event.target.value));
+      event.target.blur();
+    });
+    $("lessonPageInput").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); gotoStudyPage(Number(event.target.value)); event.target.blur(); }
+    });
+    $("tocFilterInput").addEventListener("input", () => renderStudyToc());
+    $("collapseTocBtn").addEventListener("click", () => setStudyPanel("toc", true));
+    $("expandTocBtn").addEventListener("click", () => setStudyPanel("toc", false));
+    $("collapseCardsBtn").addEventListener("click", () => setStudyPanel("cards", true));
+    $("expandCardsBtn").addEventListener("click", () => setStudyPanel("cards", false));
+    $("studyAddCardBtn").addEventListener("click", addStudyCard);
+    $("studyOpenDeckBtn").addEventListener("click", openStudyDeckInStudio);
+    $("lessonRenameBtn").addEventListener("click", startLessonRename);
+    $("lessonRenameCancelBtn").addEventListener("click", () => cancelLessonRename());
+    $("lessonRenameSaveBtn").addEventListener("click", saveLessonRename);
+    $("lessonRenameInput").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); saveLessonRename(); }
+      if (event.key === "Escape") { event.preventDefault(); cancelLessonRename(); }
+    });
+    $("lessonAttachBtn").addEventListener("click", () => { if (currentLesson) openLessonUpload(currentLesson.id); });
     $("startBtn").addEventListener("click", startOrResume);
     $("locationsBtn").addEventListener("click", startOrResumeLocations);
     $("locationsValidationBtn").addEventListener("click", () => startOrResumeValidation("locations"));
@@ -2881,10 +3542,23 @@
       if (event.key === "Escape") {
         if (!dataUpdateModal.classList.contains("hidden")) closeDataUpdate();
         else if (!quizletImportModal.classList.contains("hidden")) closeQuizletImport();
+        else if (!lessonUploadModal.classList.contains("hidden")) closeLessonUpload();
         else if (!flashcardModal.classList.contains("hidden")) closeFlashcardEditor();
         else if (!questionDetailsModal.classList.contains("hidden")) closeQuestionDetails();
         else if (!routeEditorModal.classList.contains("hidden")) closeRouteEditor();
         else closeReference();
+        return;
+      }
+      // Turn study-mode pages with the arrow keys when the reader is not typing.
+      if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && currentLesson && !$("lessonStudyScreen").classList.contains("hidden")) {
+        const target = event.target;
+        const typing = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
+        const modalOpen = [dataUpdateModal, quizletImportModal, lessonUploadModal, flashcardModal, questionDetailsModal, routeEditorModal]
+          .some((modal) => modal && !modal.classList.contains("hidden")) || !$("referenceModal").classList.contains("hidden");
+        if (!typing && !modalOpen) {
+          event.preventDefault();
+          gotoStudyPage(studyPage + (event.key === "ArrowRight" ? 1 : -1));
+        }
       }
     });
     window.addEventListener("pagehide", () => {
@@ -2900,6 +3574,12 @@
       if (state && state.validation) navigator.sendBeacon("/api/validation/pause", new Blob([JSON.stringify({ username: currentUser })], headers));
       if (state && state.locations_validation) navigator.sendBeacon("/api/locations/validation/pause", new Blob([JSON.stringify({ username: currentUser })], headers));
       if (state && state.yyc_ground_validation) navigator.sendBeacon("/api/yyc-ground/validation/pause", new Blob([JSON.stringify({ username: currentUser })], headers));
+      if (currentLesson && !$("lessonStudyScreen").classList.contains("hidden")) {
+        navigator.sendBeacon(
+          `/api/lessons/${encodeURIComponent(currentLesson.id)}/progress`,
+          new Blob([JSON.stringify({ username: currentUser, page: studyPage })], headers)
+        );
+      }
     });
   }
 
