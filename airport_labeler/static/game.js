@@ -2802,6 +2802,8 @@
     return "airportLabelQuest.studyPanels";
   }
 
+  const compactStudy = window.matchMedia("(max-width: 1180px)");
+
   function applyStudyPanels() {
     let collapsed = { toc: false, cards: false };
     try {
@@ -2810,7 +2812,10 @@
     } catch (error) {
       collapsed = { toc: false, cards: false };
     }
+    if (compactStudy.matches) collapsed.toc = true;
     const layout = $("studyLayout");
+    layout.classList.remove("contents-open");
+    $("studyContentsBtn").setAttribute("aria-expanded", "false");
     layout.classList.toggle("toc-collapsed", collapsed.toc);
     layout.classList.toggle("cards-collapsed", collapsed.cards);
     $("expandTocBtn").classList.toggle("hidden", !collapsed.toc);
@@ -2819,6 +2824,13 @@
 
   function setStudyPanel(which, collapsed) {
     const layout = $("studyLayout");
+    if (which === "toc" && compactStudy.matches) {
+      layout.classList.toggle("contents-open", !collapsed);
+      $("studyContentsBtn").setAttribute("aria-expanded", String(!collapsed));
+      if (collapsed) $("studyContentsBtn").focus();
+      else $("tocFilterInput").focus();
+      return;
+    }
     if (which === "toc") {
       layout.classList.toggle("toc-collapsed", collapsed);
       $("expandTocBtn").classList.toggle("hidden", !collapsed);
@@ -3192,7 +3204,10 @@
         <span>${escapeHTML(entry.title)}</span><span class="toc-page">p. ${entry.page}</span>
       </button>`).join("");
       host.querySelectorAll("[data-toc-page]").forEach((button) => {
-        button.addEventListener("click", () => gotoStudyPage(Number(button.dataset.tocPage)));
+        button.addEventListener("click", () => {
+          gotoStudyPage(Number(button.dataset.tocPage));
+          if (compactStudy.matches) setStudyPanel("toc", true);
+        });
       });
     }
     const note = $("studyTocNote");
@@ -3230,7 +3245,7 @@
     });
     if (active) {
       active.classList.add("active");
-      if (!options.initial) active.scrollIntoView({ block: "nearest" });
+      if (!options.initial && !compactStudy.matches) active.scrollIntoView({ block: "nearest" });
     }
   }
 
@@ -3241,8 +3256,12 @@
     const viewer = $("lessonPdfViewer");
     // Fragment-only navigation: the embedded viewer jumps without reloading,
     // and comparing the target also catches switches between lessons.
-    const target = `${currentLesson.pdf_url}#page=${page}`;
-    if (viewer.getAttribute("src") !== target) {
+    const target = compactStudy.matches
+      ? `/static/study-pdf.html?file=${encodeURIComponent(currentLesson.pdf_url)}#page=${page}`
+      : `${currentLesson.pdf_url}#page=${page}`;
+    if (compactStudy.matches && viewer.getAttribute("src")?.split("#")[0] === target.split("#")[0]) {
+      viewer.contentWindow.postMessage({ type: "study-jump", page }, location.origin);
+    } else if (viewer.getAttribute("src") !== target) {
       viewer.setAttribute("src", target);
     }
     if (page !== studyPage) {
@@ -3438,6 +3457,26 @@
     });
     $("lessonPageInput").addEventListener("keydown", (event) => {
       if (event.key === "Enter") { event.preventDefault(); gotoStudyPage(Number(event.target.value)); event.target.blur(); }
+    });
+    compactStudy.addEventListener("change", () => {
+      applyStudyPanels();
+      if (currentLesson) gotoStudyPage(studyPage, { initial: true });
+    });
+    window.addEventListener("message", (event) => {
+      if (event.origin !== location.origin || event.source !== $("lessonPdfViewer").contentWindow ||
+          event.data?.type !== "study-page" || !compactStudy.matches || !currentLesson ||
+          event.data.file !== currentLesson.pdf_url) return;
+      const page = event.data.page;
+      if (!Number.isInteger(page) || page < 1 || page > currentLesson.page_count || page === studyPage) return;
+      studyPage = page;
+      scheduleLessonProgressSave();
+      updateStudyNav({ initial: true });
+    });
+    $("studyContentsBtn").addEventListener("click", () => {
+      setStudyPanel("toc", $("studyLayout").classList.contains("contents-open"));
+    });
+    $("studyTocPanel").addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && compactStudy.matches) setStudyPanel("toc", true);
     });
     $("tocFilterInput").addEventListener("input", () => renderStudyToc());
     $("collapseTocBtn").addEventListener("click", () => setStudyPanel("toc", true));

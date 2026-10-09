@@ -1411,3 +1411,28 @@ tbody tr:last-child td { border-bottom: 0; }
   .study-strip-actions { width: 100%; justify-items: start; }
   .study-topline { flex-direction: column; }
 }
+
+/* Compact Study: contents is a bounded disclosure, not a full-height column. */
+.study-contents-toggle { display: none; }
+@media (max-width: 1180px) {
+  .study-contents-toggle { display: inline-flex; min-height: 44px; margin-bottom: 10px; }
+  .study-layout .study-toc, #expandTocBtn { display: none; }
+  .study-layout.contents-open .study-toc { display: flex; max-height: 45vh; max-height: 45dvh; }
+  .study-toc-list { min-height: 0; overscroll-behavior: contain; }
+  .study-toc-entry, .study-panel-head .icon-button { min-height: 44px; }
+  .study-toc > input, .study-panel-head, .study-toc-note { flex-shrink: 0; }
+  #tocFilterInput, .study-page-field input { font-size: 16px; }
+  .study-toolbar { gap: 8px; }
+  .study-toolbar button, .study-pdf-link { min-height: 44px; display: inline-flex; align-items: center; }
+  #lessonPdfViewer { height: 70vh; height: 70dvh; min-height: 280px; }
+  .study-frame-wrap { min-height: 280px; }
+}
+@media (max-width: 767px) {
+  .study-layout .study-cards, #expandCardsBtn { display: none; }
+  .study-topline { gap: 10px; margin-bottom: 12px; }
+  .study-topline-actions { width: 100%; justify-content: space-between; gap: 8px; }
+  .study-toolbar { padding: 8px; gap: 6px; }
+  .study-page-field { gap: 4px; }
+  .study-page-field input { width: 44px; }
+  .study-pdf-link { margin-left: 0; }
+}
